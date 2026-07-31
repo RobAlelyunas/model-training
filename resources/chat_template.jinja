@@ -1,0 +1,7 @@
+{{ BEGIN_CONVERSATION_TOKEN }}
+{%- for message in messages -%}
+{{ BEGIN_MESSAGE_TOKEN }}{{ message['role'] }}{{ END_MESSAGE_HEADER_TOKEN }}{{ message['content'] }}{{ END_MESSAGE_TOKEN }}
+{%- endfor -%}
+{%- if add_generation_prompt -%}
+{{ BEGIN_MESSAGE_TOKEN }}assistant{{ END_MESSAGE_HEADER_TOKEN }}
+{%- endif -%}

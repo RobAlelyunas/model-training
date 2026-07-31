@@ -1,0 +1,22 @@
+{
+    "BEGIN_CONVERSATION_TOKEN": "<|begin_of_text|>",
+    "BEGIN_MESSAGE_TOKEN": "<|start_header_id|>",
+    "END_MESSAGE_HEADER_TOKEN": "<|end_header_id|>",
+    "END_MESSAGE_TOKEN": "<|eot_id|>",
+
+    "base_model": "Meta-LLama-3-8B",
+    "dist_model_name": "Meta-LLama-3-8B-toby_4bit",
+
+    "dataset_path": "resources/working_dataset.jsonl",
+
+    "quantization_bits": 4,
+
+    "lora_batch_size": 1,
+    "lora_num_layers": 8,
+    "lora_iters": 150,
+    "lora_learning_rate": 2e-5,
+
+    "max_inference_tokens": 256,
+    "inference_temperature": 0.7
+}
+
