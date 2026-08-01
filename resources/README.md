@@ -18,8 +18,8 @@ END_MESSAGE_TOKEN = "<|im_end|>"
 This is the name to use to deploy the final quantized and trained model to the dist directory.  Its also the model that will be used for inferences. 
 ### property: dataset_path
 This is the path to the file in which a working copy of your training data is kept in a jsonl format with each record having a "prompt" and "completion".  This file will be processed into single "text" and have tags added before it is fed to the training command as train.jsonl.  Since this training data uniquely defines your model behavior, this property lets you configure your current working data set.
-### property: quantization bits
-The number of bits to use for quantization.  Quantization shrinks the total model size and makes it more manageable.
+### property: quantization 
+ If you are using a 16 bit base model then you can quantize the final fused model to make it smaller for distribution. In this case, specify the number of bits. Quantization shrinks the total model size and makes it more manageable. If the base model is already quantized from original 16 bits, don't perform an additional quanitzation step because it will make the weights noisy.
 ### lora_*
 The parameters used for LoRA training.
 ### max_inference_tokens and inference_temperature

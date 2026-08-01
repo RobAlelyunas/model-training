@@ -9,9 +9,13 @@ from src.config import get_property
 
 class TrainingService:
     def __init__(self):
-        self.base_model_name = get_property("base_model")
+        self.source_model = get_property("source_model")
         self.dataset_path = get_property("dataset_path")
-        self.dist_model_name = get_property("dist_model_name")
+        self.target_model = get_property("target_model")
+        self.fused_path = Path(f"generated/{self.source_model}-fused")
+        self.quant_path = Path(f"generated/{self.source_model}-fused-quantized")
+        self.target_path = Path(f"models/targets/{self.target_model}")
+        self.source_path = Path(f"models/sources/{self.source_model}")
 
     def cleanup_generated_folder(self):
         cmd = "rm -rf generated/*"
@@ -82,7 +86,7 @@ class TrainingService:
 
         cmd = (
             "mlx_lm.lora "
-            f"--model deps/{self.base_model_name} "
+            f"--model {self.source_path} "
             f"--data generated/data "
             "--train "
             f"--batch-size {batch_size} "
@@ -97,8 +101,8 @@ class TrainingService:
     def fuse_model(self):
         cmd = (
             "mlx_lm.fuse "
-            f"--model deps/{self.base_model_name} "
-            f"--save-path generated/{self.base_model_name}-fused "
+            f"--model {self.source_path} "
+            f"--save-path {self.fused_path} "
             f"--adapter-path generated/adapter"
         )
         return ProcessController(cmd).start()
@@ -121,10 +125,9 @@ class TrainingService:
                 f"{{% set END_MESSAGE_TOKEN = '{END_MESSAGE_TOKEN}' %}}"
             ]
             updated_content = "\n".join(preamble_lines) + "\n" + template_content
-            
-            fused_model_path = Path(f"generated/{self.base_model_name}-fused")
-            fused_model_path.mkdir(parents=True, exist_ok=True)
-            output_path = Path(f"{fused_model_path}/chat_template.jinja")
+
+            self.fused_path.mkdir(parents=True, exist_ok=True)
+            output_path = Path(f"{self.fused_path}/chat_template.jinja")
             with open(output_path, "w", encoding="utf-8") as f:
                 f.write(updated_content)
 
@@ -132,21 +135,36 @@ class TrainingService:
 
         return ProcessController(_task).start()
 
-    def quantize_fused_model(self, q_bits=None):
+    def quantize_fused_model(self, q_bits=None, perform_quantization=None):
         if q_bits is None:
             q_bits = get_property("quantization_bits")
+        if perform_quantization is None:
+            perform_quantization = get_property("perform_quantization")
 
-        cmd = (
+        if not perform_quantization:
+            cmd = ("echo '[INFO] Quantization skipped.'",)
+        else:
+            cmd = (
             "mlx_lm.convert "
-            f"--model generated/{self.base_model_name}-fused "
+            f"--model {self.fused_path} "
             f"-q "
             f"--q-bits {q_bits} "
-            f"--mlx-path generated/{self.base_model_name}-fused_{q_bits}bit"
+            f"--mlx-path {self.quant_path}"
         )
         return ProcessController(cmd).start()
 
-    def deploy_dist_model(self):
-        cmd = f"cp -r generated/{self.base_model_name}-fused_4bit dist/{self.dist_model_name}"
+    def deploy_target_model(self):
+    
+        if self.quant_path.exists():
+            print(f"[INFO] Deploying quantized fused model from {self.quant_path}.")
+            source_to_copy = self.quant_path
+        elif self.fused_path.exists():
+            print(f"[INFO] Deploying unquantized fused model from {self.fused_path}.")
+            source_to_copy = self.fused_path
+        else:
+            raise FileNotFoundError(f"[ERROR] Neither quantized nor fused model found for source '{self.source_model}' in generated/")
+
+        cmd = f"cp -r {source_to_copy} {self.target_path}"
         return ProcessController(cmd).start()
 
     def apply_pipeline(self):
@@ -159,7 +177,7 @@ class TrainingService:
                 ("Fuse Model", self.fuse_model),
                 ("Install Chat Template", self.install_chat_template),
                 ("Quantize Fused Model", self.quantize_fused_model),
-                ("Deploy Distribution Model", self.deploy_dist_model),
+                ("Deploy Target Model", self.deploy_target_model),
             ]
 
             for step_name, step_func in steps:

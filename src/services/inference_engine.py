@@ -8,9 +8,9 @@ class InferenceEngine:
         self.tokenizer = None
 
     def load_model(self):
-        model_path = get_property("dist_model_name")
+        model_path = f"models/targets/{get_property('target_model')}"
         print(f"Loading MLX model from {model_path}...")
-        self.model, self.tokenizer = load(model_path)
+        self.model, self.tokenizer, *_ = load(model_path)
         print("MLX model loaded successfully.")
 
     def is_model_loaded(self) -> bool:
