@@ -1,24 +1,18 @@
 import time
 from src.services.training_service import TrainingService
+from src.config import load_command_line_overrides
 
 def main():
+    load_command_line_overrides()
+
     print("Initializing Training Pipeline (Headless Mode)...")
     service = TrainingService()
     
-    # Start the non-blocking pipeline process controller
     controller = service.apply_pipeline()
     
-    # Stream logs to the terminal while the pipeline runs
     while controller.is_alive():
-        for line in controller.poll_new_logs():
-            print(line)
         time.sleep(0.2)
-        
-    # Catch any remaining logs after completion
-    for line in controller.poll_new_logs():
-        print(line)
-        
-    # Final check on success state
+ 
     if controller.was_successful():
         print("\n[SUCCESS] Pipeline completed successfully from end to end!")
         exit(0)

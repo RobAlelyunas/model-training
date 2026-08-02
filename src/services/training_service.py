@@ -21,9 +21,8 @@ class TrainingService:
         cmd = "rm -rf generated/*"
         return ProcessController(cmd).start()
 
-    def prepare_data_dir(self, dataset_path=None):
-        if dataset_path is None:
-            dataset_path = self.dataset_path
+    def prepare_data_dir(self):
+        dataset_path = self.dataset_path
 
         def _task():
             out_dir = Path("generated/data")
@@ -74,15 +73,11 @@ class TrainingService:
 
         return ProcessController(_task).start()
 
-    def train_lora(self, batch_size=None, num_layers=None, iters=None, learning_rate=None):
-        if batch_size is None:
-            batch_size = get_property("lora_batch_size")
-        if num_layers is None:
-            num_layers = get_property("lora_num_layers")
-        if iters is None:
-            iters = get_property("lora_iters")
-        if learning_rate is None:
-            learning_rate = get_property("lora_learning_rate")
+    def train_lora(self):
+        batch_size = get_property("lora_batch_size")
+        num_layers = get_property("lora_num_layers")
+        iters = get_property("lora_iters")
+        learning_rate = get_property("lora_learning_rate")
 
         cmd = (
             "mlx_lm.lora "
@@ -135,11 +130,10 @@ class TrainingService:
 
         return ProcessController(_task).start()
 
-    def quantize_fused_model(self, q_bits=None, perform_quantization=None):
-        if q_bits is None:
-            q_bits = get_property("quantization_bits")
-        if perform_quantization is None:
-            perform_quantization = get_property("perform_quantization")
+    def quantize_fused_model(self):
+        
+        q_bits = get_property("quantization_bits")
+        perform_quantization = get_property("perform_quantization")
 
         if not perform_quantization:
             cmd = ("echo '[INFO] Quantization skipped.'",)
@@ -156,10 +150,10 @@ class TrainingService:
     def deploy_target_model(self):
     
         if self.quant_path.exists():
-            print(f"[INFO] Deploying quantized fused model from {self.quant_path}.")
+            print(f"[INFO] Deploying quantized fused model from {self.quant_path} to {self.target_path}.")
             source_to_copy = self.quant_path
         elif self.fused_path.exists():
-            print(f"[INFO] Deploying unquantized fused model from {self.fused_path}.")
+            print(f"[INFO] Deploying unquantized fused model from {self.fused_path} to {self.target_path}.")
             source_to_copy = self.fused_path
         else:
             raise FileNotFoundError(f"[ERROR] Neither quantized nor fused model found for source '{self.source_model}' in generated/")

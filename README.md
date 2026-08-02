@@ -30,13 +30,14 @@ Install all required packages (including mlx and the Hugging Face CLI tools) fro
 pip install -r requirements.txt
 
 
-## 5. Download the Base Model
-To get started, a 4 bit quantized, small, 2G base model is available from hugging face at ralelyunas/Llama-3.2-3B-4bit. You can use a larger model but generally speaking it should be a few gig smaller than your available memory. 
+## 5. Download the Source Model
+
+Download a source model. Smaller and quantized models take less memory and time, but the tradeoff is they are less deep and robust. You can use any source model, even a base model or an instruct model, but to get started, download the ralelyunas/Meta-Llama-3-8B-4bit from hugging face which will be fine with 6 gig of available memory. This is a quantized 4 bit base model.
 
 Navigate into the models/sources directory and download the source model:
 
 cd models/sources
-huggingface-cli download ralelyunas/Llama-3.2-3B-4bit
+huggingface-cli download ralelyunas/Meta-Llama-3-8B-4bit
 cd ..
 
 
@@ -49,4 +50,12 @@ python -m src.pipeline
 ## 7. Start the UI
 Once the output confirms there are no errors, start the user interface application:
 
-python -m src.main
+python -m src.ui
+
+# Explore the Toby personality
+
+In the resources directory, there is a dataset with the Toby personality training data in it. To explore this dataset, run the pipeline with property overrides to build Toby as shown, then start up the UI as shown with the trained Toby model.
+
+python -m src.pipeline --source_model Meta-Llama-3-8B-4bit --dataset_path resources/toby_dataset.jsonl --target_model Meta-Llama-3-8B-4bit-Toby
+
+python -m src.ui --dataset_path resources/toby_dataset.jsonl --target_model Meta-Llama-3-8B-4bit-Toby

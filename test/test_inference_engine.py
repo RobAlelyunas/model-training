@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+from src.config import load_command_line_overrides
 
 # Ensure the root project directory is in the python path if running standalone
 sys.path.append(str(Path(__file__).resolve().parent.parent))
@@ -44,4 +45,5 @@ def test_inference_engine():
     print("--- All Inference Engine Tests Passed Successfully! ---")
 
 if __name__ == "__main__":
+    load_command_line_overrides()
     test_inference_engine()

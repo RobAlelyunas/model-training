@@ -1,6 +1,5 @@
 import subprocess
 import threading
-import time
 import sys
 
 class ProcessController:
@@ -67,11 +66,6 @@ class ProcessController:
                 and self.thread.is_alive() 
                 and (self.process is None or self.process.poll() is None)
             )
-
-    def poll_new_logs(self):
-        # Kept as a dummy method for backwards-compatibility with UI loops if needed, 
-        # but output now flows directly to stdout/terminal automatically.
-        return []
 
     def was_successful(self):
         if self.is_alive():

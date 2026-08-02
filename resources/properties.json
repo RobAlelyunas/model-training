@@ -1,7 +1,7 @@
 {
 
-    "source_model": "Llama-3.2-3B-4bit",
-    "target_model": "Llama-3.2-3B-4bit-MyModel",
+    "source_model": "Meta-Llama-3-8B-4bit",
+    "target_model": "Meta-Llama-3-8B-4bit-MyModel",
 
     "dataset_path": "resources/working_dataset.jsonl",
 
@@ -20,6 +20,6 @@
     "BEGIN_MESSAGE_TOKEN": "<|start_header_id|>",
     "END_MESSAGE_HEADER_TOKEN": "<|end_header_id|>",
     "END_MESSAGE_TOKEN": "<|eot_id|>"
-    
+
 }
 
