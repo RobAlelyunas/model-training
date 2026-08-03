@@ -23,19 +23,28 @@ class ProcessController:
                     self._success = True
                     self._exit_code = 0
             else:
+                # Echo the exact shell command being executed for visibility in the logs
+                sys.stdout.write(f"\n[ProcessController] Running command: {self.target}\n")
+                
+                # Open subprocess with piped stdout/stderr so we can catch and write to active sys.stdout
                 self.process = subprocess.Popen(
                     self.target,
-                    stdout=sys.stdout,
-                    stderr=sys.stderr,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
                     text=True,
                     shell=True,
                 )
+                
+                if self.process.stdout is not None:
+                    for line in self.process.stdout:
+                        sys.stdout.write(line)
+                    
                 self.process.wait()
                 self._exit_code = self.process.returncode
                 self._success = (self._exit_code == 0 and not self._cancelled)
 
         except Exception as e:
-            print(f"\n[ProcessController] Exception encountered: {e}")
+            sys.stdout.write(f"\n[ProcessController] Exception encountered: {e}\n")
             self._success = False
             self._exit_code = 1
 
@@ -55,7 +64,7 @@ class ProcessController:
             except subprocess.TimeoutExpired:
                 self.process.kill()
                 self.process.wait()
-        print("\n[ProcessController] Terminated by user command.")
+        sys.stdout.write("\n[ProcessController] Terminated by user command.\n")
 
     def is_alive(self):
         if self.is_callable:

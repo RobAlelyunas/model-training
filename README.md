@@ -58,4 +58,4 @@ In the resources directory, there is a dataset with the Toby personality trainin
 
 python -m src.pipeline --source_model Meta-Llama-3-8B-4bit --dataset_path resources/toby_dataset.jsonl --target_model Meta-Llama-3-8B-4bit-Toby
 
-python -m src.ui --dataset_path resources/toby_dataset.jsonl --target_model Meta-Llama-3-8B-4bit-Toby
+python -m src.main --source_model Meta-Llama-3-8B-4bit --dataset_path resources/toby_dataset.jsonl --target_model Meta-Llama-3-8B-4bit-Toby

@@ -1,9 +1,7 @@
 import time
 from src.services.training_service import TrainingService
-from src.config import load_command_line_overrides
 
 def main():
-    load_command_line_overrides()
 
     print("Initializing Training Pipeline (Headless Mode)...")
     service = TrainingService()

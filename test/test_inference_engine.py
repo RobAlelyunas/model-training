@@ -1,6 +1,6 @@
 import sys
 from pathlib import Path
-from src.config import load_command_line_overrides
+from src.global_state import load_command_line_overrides
 
 # Ensure the root project directory is in the python path if running standalone
 sys.path.append(str(Path(__file__).resolve().parent.parent))

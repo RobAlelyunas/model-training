@@ -2,13 +2,18 @@ import json
 from pathlib import Path
 import shutil
 import time
-
 from src.services.process_controller import ProcessController
-from src.config import get_property
+from src.global_state import get_property, register_state_change_handler
 
 
 class TrainingService:
     def __init__(self):
+        self.set_local_properties()
+        self._cancel_requested = False
+        register_state_change_handler(self.global_state_changed)
+
+    def set_local_properties(self):
+        """Initializes local properties from the global state."""
         self.source_model = get_property("source_model")
         self.dataset_path = get_property("dataset_path")
         self.target_model = get_property("target_model")
@@ -17,12 +22,15 @@ class TrainingService:
         self.target_path = Path(f"models/targets/{self.target_model}")
         self.source_path = Path(f"models/sources/{self.source_model}")
 
+    def global_state_changed(self):
+        """Called when global state changes, e.g., source model, target model, or dataset path changes."""
+        self.set_local_properties()
+
     def cleanup_generated_folder(self):
         cmd = "rm -rf generated/*"
         return ProcessController(cmd).start()
 
     def prepare_data_dir(self):
-        dataset_path = self.dataset_path
 
         def _task():
             out_dir = Path("generated/data")
@@ -41,10 +49,12 @@ class TrainingService:
             END_MESSAGE_TOKEN = get_property("END_MESSAGE_TOKEN")
             
             processed_count = 0
-            in_file = Path(dataset_path)
+            in_file = Path(self.dataset_path)
             if not in_file.exists():
                 raise FileNotFoundError(f"Could not find input dataset at {in_file}") 
-                
+
+            print(f"Processing dataset from {in_file} and writing to {output_file_path}...")
+
             with open(in_file, "r", encoding="utf-8") as fin, \
                  open(output_file_path, "w", encoding="utf-8") as fout:
                 for line in fin:
@@ -136,7 +146,7 @@ class TrainingService:
         perform_quantization = get_property("perform_quantization")
 
         if not perform_quantization:
-            cmd = ("echo '[INFO] Quantization skipped.'",)
+            cmd = "echo '[INFO] Quantization skipped.'"
         else:
             cmd = (
             "mlx_lm.convert "
@@ -161,8 +171,15 @@ class TrainingService:
         cmd = f"cp -r {source_to_copy} {self.target_path}"
         return ProcessController(cmd).start()
 
+    def request_cancel(self):
+        """Signals the pipeline to stop after the current step completes."""
+        self._cancel_requested = True
+        print("\n[TrainingService] Stop requested by user. Will halt after current step.")
+
     def apply_pipeline(self):
-        """Runs all steps sequentially, printing everything directly to standard output."""
+        """Runs all steps sequentially, checking for cancellation between steps."""
+        self._cancel_requested = False  # Reset flag at the start of a new pipeline run
+
         def _pipeline_task():
             steps = [
                 ("Cleanup Generated Folder", self.cleanup_generated_folder),
@@ -175,6 +192,10 @@ class TrainingService:
             ]
 
             for step_name, step_func in steps:
+                if self._cancel_requested:
+                    print(f"\n[PIPELINE] Stopping queue. Skipping remaining step: {step_name}")
+                    break
+
                 print(f"\n[PIPELINE] Starting step: {step_name}")
                 controller = step_func()
                 
@@ -183,11 +204,16 @@ class TrainingService:
                     time.sleep(0.1)
 
                 if not controller.was_successful():
+                    if self._cancel_requested:
+                        break
                     raise RuntimeError(f"Pipeline failed at step: '{step_name}'")
                 
                 print(f"[PIPELINE] Successfully completed step: {step_name}")
 
-            print("\n[PIPELINE] All pipeline steps completed successfully!")
+            if self._cancel_requested:
+                print("\n[PIPELINE] Pipeline successfully stopped after current step.")
+            else:
+                print("\n[PIPELINE] All pipeline steps completed successfully!")
 
         return ProcessController(_pipeline_task).start()
 

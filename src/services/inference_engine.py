@@ -1,17 +1,34 @@
 from mlx_lm import load, generate
 from mlx_lm.sample_utils import make_sampler
-from src.config import get_property
+from src.global_state import get_property, register_state_change_handler
 
 class InferenceEngine:
     def __init__(self):
         self.model = None
         self.tokenizer = None
+        self.model_path = f"models/targets/{get_property('target_model')}"
+        self.load_model()  # Load the model at initialization
+        register_state_change_handler(self.global_state_change)
+
+    def global_state_change(self):
+        new_model_path = f"models/targets/{get_property('target_model')}"
+        if self.is_model_loaded() and self.model_path != new_model_path:
+            print(f"[InferenceEngine] Target model changed to '{new_model_path}', reloading model...")
+            self.unload_model()
+            self.load_model()
 
     def load_model(self):
-        model_path = f"models/targets/{get_property('target_model')}"
-        print(f"Loading MLX model from {model_path}...")
-        self.model, self.tokenizer, *_ = load(model_path)
-        print("MLX model loaded successfully.")
+        self.model, self.tokenizer, *_ = load(self.model_path)
+        print(f"Loaded MLX model from {self.model_path}...")
+
+    def unload_model(self):
+        """Unloads the model and tokenizer references to free up memory."""
+        if self.is_model_loaded():
+            self.model = None
+            self.tokenizer = None
+            print("[InferenceEngine] Model unloaded to free memory.")
+        else:
+            print("[InferenceEngine] No model currently loaded.")
 
     def is_model_loaded(self) -> bool:
         return self.model is not None and self.tokenizer is not None
@@ -31,7 +48,7 @@ class InferenceEngine:
             self.model, 
             self.tokenizer, 
             prompt=prompt, 
-            max_tokens=max_inference_tokens, 
+            max_tokens=max_inference_tokens,
             sampler=sampler, 
             verbose=False
         ).strip()
