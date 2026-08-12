@@ -10,7 +10,8 @@ from src.ui.ui_theme import (
     LOG_FG_CONTROLLER, 
     LOG_FG_ERROR
 )
-from src.global_state import register_state_change_handler
+from src.global_state import get_property, register_state_change_handler, set_property
+from src.ui.ui_helpers import run_background
 
 
 class StdoutRedirector:
@@ -43,11 +44,7 @@ class ApplyTab(ttk.Frame):
     def __init__(self, parent):
         super().__init__(parent)
 
-        self.active_controller = None
-        self.is_cancelled_by_user = False
         self.original_stdout = None
-        
-        # Mapping for display string -> actual directory path name
         self.model_mapping = {}
 
         self.create_widgets()
@@ -62,7 +59,7 @@ class ApplyTab(ttk.Frame):
         top_frame.pack(fill="x", padx=10, pady=10)
 
         self.status_label = ttk.Label(
-            top_frame, text="Ready to apply training pipeline.", font=("Arial", 11, "bold")
+            top_frame, text="Apply the dataset to create a new target model.", font=("Arial", 11, "bold")
         )
         self.status_label.pack(side="left", padx=5)
 
@@ -71,7 +68,7 @@ class ApplyTab(ttk.Frame):
         btn_frame.pack(side="right", padx=5)
 
         self.start_button = ttk.Button(
-            btn_frame, text="Apply Training", command=self.start_workflow
+            btn_frame, text="Run", command=self.start_workflow
         )
         self.start_button.pack(side="left", padx=2)
 
@@ -84,17 +81,42 @@ class ApplyTab(ttk.Frame):
         custom_frame = ttk.Frame(self)
         custom_frame.pack(fill="x", padx=15, pady=5)
 
-        self.use_custom_target_var = tk.BooleanVar(value=False)
+        self.deploy_custom_target = tk.BooleanVar(value=False)
         self.custom_target_checkbox = ttk.Checkbutton(
             custom_frame,
-            text="Use custom target model name",
-            variable=self.use_custom_target_var,
-            command=self.toggle_custom_target_entry
+            text="Deploy with a custom target model name",
+            variable=self.deploy_custom_target
         )
         self.custom_target_checkbox.pack(side="left", padx=5)
 
-        self.custom_target_entry = ttk.Entry(custom_frame, width=30, state=tk.DISABLED)
+        self.custom_target_entry = ttk.Entry(custom_frame, width=20, state=tk.NORMAL)
         self.custom_target_entry.pack(side="left", padx=5)
+
+        # Hyperparameters Frame (Learning Rate & Iterations)
+        params_frame = ttk.Frame(self)
+        params_frame.pack(fill="x", padx=15, pady=5)
+
+        # Configure a custom ttk style to right-justify text inside Entry widgets
+        style = ttk.Style()
+        style.configure("RightEntry.TEntry", justify="right")
+
+        # Learning Rate Configuration
+        ttk.Label(params_frame, text="Learning Rate:").pack(side="left", padx=(5, 2))
+        
+        default_lr = str(get_property("lora_learning_rate") or "2e-05")
+        self.lr_var = tk.StringVar(value=default_lr)
+        self.lr_entry = ttk.Entry(params_frame, textvariable=self.lr_var, width=10, style="RightEntry.TEntry")
+        self.lr_entry.pack(side="left", padx=(0, 15))
+        self.lr_entry.bind("<FocusOut>", lambda e: self.save_hyperparameters())
+
+        # Iterations Configuration (smaller width for 2-4 digit numbers, right justified)
+        ttk.Label(params_frame, text="Iterations:").pack(side="left", padx=(5, 2))
+        
+        default_iters = str(get_property("lora_iters") or "150")
+        self.iters_var = tk.StringVar(value=default_iters)
+        self.iters_entry = ttk.Entry(params_frame, textvariable=self.iters_var, width=6, style="RightEntry.TEntry")
+        self.iters_entry.pack(side="left", padx=(0, 5))
+        self.iters_entry.bind("<FocusOut>", lambda e: self.save_hyperparameters())
 
         # Center Frame: Real-time Log Streaming Window
         log_frame = ttk.LabelFrame(self, text="Execution Logs")
@@ -116,76 +138,74 @@ class ApplyTab(ttk.Frame):
         self.text_box.tag_config("pipeline_tag", foreground=LOG_FG_PIPELINE, font=("Courier", 10, "bold"))
         self.text_box.tag_config("controller_tag", foreground=LOG_FG_CONTROLLER)
         self.text_box.tag_config("error_tag", foreground=LOG_FG_ERROR, font=("Courier", 10, "bold"))
-
-    def toggle_custom_target_entry(self):
-        """Enables or disables the custom target model entry based on the checkbox state."""
-        if self.use_custom_target_var.get():
-            self.custom_target_entry.config(state=tk.NORMAL)
-        else:
-            self.custom_target_entry.config(state=tk.DISABLED)
  
+    def save_hyperparameters(self):
+        """Saves current values from entry fields to global state when focus shifts away."""
+        lr_val = self.lr_var.get().strip()
+        if lr_val:
+            set_property("lora_learning_rate", lr_val)
+
+        iters_val = self.iters_var.get().strip()
+        if iters_val:
+            set_property("lora_iters", iters_val)
+
     def start_workflow(self):
-        """Kicks off the complete workflow lifecycle from the UI thread."""
-        self.is_cancelled_by_user = False
+        """Kicks off the complete workflow lifecycle cleanly using the background helper."""
+        # Ensure any pending text modifications are saved immediately on start
+        self.save_hyperparameters()
+
         self.start_button.config(state=tk.DISABLED)
         self.cancel_button.config(state=tk.NORMAL)
         self.text_box.delete("1.0", tk.END)
 
         # Handle custom target model property update if checked
-        if self.use_custom_target_var.get():
-            custom_name = self.custom_target_entry.get().strip()
-            messagebox.showinfo("Info", f"Custom target model name: {custom_name}, implementation TBD")
-
+        if self.deploy_custom_target.get():
+            set_property("custom_target", self.custom_target_entry.get().strip())
+        else:
+            set_property("custom_target", None)
+        
         # Redirect standard output so all print statements stream directly into the text box
         self.original_stdout = sys.stdout
         sys.stdout = StdoutRedirector(self.text_box)
 
-        try:
-            # 1. Pre-Pipeline Tasks (Unloads model)
-            self.run_pre_pipeline_tasks()
-
-            # 2. Kick off the core background training pipeline controller[cite: 3, 5]
-            self.active_controller = training_service.apply_pipeline()
-            self.poll_workflow()
-
-        except Exception as e:
-            sys.stdout = self.original_stdout
-            self.text_box.insert(tk.END, f"\n[Error] Failed to start pipeline: {e}\n", "error_tag")
-            self.status_label.config(text="Pipeline failed during launch.")
-            self.start_button.config(state=tk.NORMAL)
-            self.cancel_button.config(state=tk.DISABLED)
-
-    def run_pre_pipeline_tasks(self):
-        """Handles tasks to perform before the training cycle starts."""
+        # 1. Pre-Pipeline Tasks (Unload inference model)
         self.status_label.config(text="Preparing: Unloading inference model...")
         self.text_box.insert(tk.END, "=== PRE-PIPELINE: UNLOADING INFERENCE MODEL ===\n", "pipeline_tag")
-        
-        # Free up unified memory by unloading the active model before training begins
         inference_engine.unload_model()
         
         self.status_label.config(text="Running training pipeline...")
         self.text_box.insert(tk.END, "=== STARTING TRAINING PIPELINE ===\n", "pipeline_tag")
 
-    def run_post_pipeline_tasks(self):
-        """Handles cleanup and recovery tasks after a successful training cycle."""
-        self.status_label.config(text="Finishing: Reloading inference model...")
-        self.text_box.insert(tk.END, "\n=== POST-PIPELINE: RELOADING INFERENCE MODEL ===\n", "pipeline_tag")
+        # Define background task (now completely synchronous and blocking)
+        def background_pipeline_task():
+            training_service.apply_pipeline()
+            return True
 
-        try:
-            inference_engine.load_model()
-            self.text_box.insert(tk.END, "[InferenceEngine] Model reloaded successfully.\n", "controller_tag")
-        except Exception as e:
-            self.text_box.insert(tk.END, f"[Error] Failed to reload model: {e}\n", "error_tag")
-            messagebox.showerror("Error", f"Failed to load model:\n{e}")
+        # Define UI cleanup callback when background execution finishes
+        def on_pipeline_complete(success):
+            if self.original_stdout:
+                sys.stdout = self.original_stdout
 
-        self.status_label.config(text="Pipeline completed successfully!")
-        self.text_box.insert(tk.END, "=== PIPELINE COMPLETED SUCCESSFULLY ===\n", "pipeline_tag")
+            self.start_button.config(state=tk.NORMAL)
+            self.cancel_button.config(state=tk.DISABLED)
+
+            self.status_label.config(text="Finishing: setting target model and loading inference model...")
+            target_model = get_property("custom_target") or get_property("target_model")
+            self.text_box.insert(tk.END, f"\n=== POST-PIPELINE: Set Target Model to '{target_model}' ===\n", "pipeline_tag")
+            set_property("target_model", target_model)
+            try:
+                inference_engine.load_model()
+                self.status_label.config(text="Pipeline completed successfully!")
+                self.text_box.insert(tk.END, "=== PIPELINE COMPLETED SUCCESSFULLY ===\n", "pipeline_tag")
+            except Exception as e:
+                self.text_box.insert(tk.END, f"[Error] Failed to reload model: {e}\n", "error_tag")
+                messagebox.showerror("Error", f"Failed to load model:\n{e}")
+
+        # Fire it off via the clean background helper
+        run_background(self, background_pipeline_task, on_pipeline_complete)
 
     def confirm_cancel(self):
         """Requests graceful pipeline halt after the current step finishes."""
-        if not self.active_controller or not self.active_controller.is_alive():
-            return
-
         response = messagebox.askyesno(
             "Confirm Stop",
             "This will let the current step finish and then safely stop the pipeline.\nDo you want to proceed?",
@@ -193,31 +213,6 @@ class ApplyTab(ttk.Frame):
         )
 
         if response:
-            self.is_cancelled_by_user = True
             self.status_label.config(text="Stopping after current step...")
             self.text_box.insert(tk.END, "\n[User Action] Stop requested. Waiting for current step to complete...\n", "error_tag")
             training_service.request_cancel()
-
-    def poll_workflow(self):
-        """Periodically checks if the master pipeline controller is still alive."""
-        if not self.active_controller:
-            return
-
-        if self.active_controller.is_alive():
-            self.after(200, self.poll_workflow)
-        else:
-            if self.original_stdout:
-                sys.stdout = self.original_stdout
-
-            self.start_button.config(state=tk.NORMAL)
-            self.cancel_button.config(state=tk.DISABLED)
-
-            if self.is_cancelled_by_user:
-                self.status_label.config(text="Pipeline cancelled by user.")
-                self.text_box.insert(tk.END, "\n=== PIPELINE ABORTED BY USER ===\n", "error_tag")
-            elif self.active_controller.was_successful():
-                # Execute Post-Pipeline tasks cleanly here
-                self.run_post_pipeline_tasks()
-            else:
-                self.status_label.config(text="Pipeline failed.")
-                self.text_box.insert(tk.END, "\n=== PIPELINE FAILED ===\n", "error_tag")

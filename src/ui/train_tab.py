@@ -5,6 +5,7 @@ from tkinter import messagebox, ttk
 from pathlib import Path
 from src.global_state import get_property
 from src.services.inference_engine import inference_engine
+from src.ui.ui_helpers import run_background
 from src.ui.ui_theme import create_styled_text
 from src.global_state import register_state_change_handler
 from src.global_state import set_property
@@ -27,13 +28,19 @@ class TrainTab(ttk.Frame):
         self.working_dataset_path = Path(get_property("dataset_path"))
         self.target_model = get_property("target_model")
         self.target_model_path = Path(f"models/targets/{self.target_model}")
+        
+        # Sync checkbox state if global property changes externally
+        if hasattr(self, "use_chat_var"):
+            current_chat_prop = bool(get_property("use_chat_template"))
+            if self.use_chat_var.get() != current_chat_prop:
+                self.use_chat_var.set(current_chat_prop)
 
     def create_widgets(self):
         # Main container
         editor_container = ttk.Frame(self)
         editor_container.pack(expand=True, fill="both", padx=15, pady=15)
         editor_container.rowconfigure(0, weight=1) # Top: Prompt section (narrower)
-        editor_container.rowconfigure(1, weight=4) # Bottom: Tabbed interface for responses
+        editor_container.rowconfigure(1, weight=4) # Bottom: Model response and actions section
         editor_container.columnconfigure(0, weight=1)
 
         # ---------------------------------------------------------------------
@@ -49,6 +56,7 @@ class TrainTab(ttk.Frame):
         prompt_header_frame.columnconfigure(0, weight=1)
 
         ttk.Label(prompt_header_frame, text="Prompt (Type your own or load a random one)").pack(side="left")
+        
         self.random_prompt_button = ttk.Button(
             prompt_header_frame, text="Select Random Prompt", command=self.on_random_prompt_clicked
         )
@@ -62,13 +70,10 @@ class TrainTab(ttk.Frame):
         self.prompt_text.configure(yscrollcommand=prompt_scroll.set)
 
         # ---------------------------------------------------------------------
-        # BOTTOM SECTION: Notebook with two tabs (Generated Answer vs Alternative Answer)
+        # BOTTOM SECTION: Model Response & Action Controls (No notebook)
         # ---------------------------------------------------------------------
-        self.bottom_notebook = ttk.Notebook(editor_container)
-        self.bottom_notebook.grid(row=1, column=0, sticky="nsew")
-
-        # --- Tab 1: Model Response ---
-        response_tab = ttk.Frame(self.bottom_notebook)
+        response_tab = ttk.Frame(editor_container)
+        response_tab.grid(row=1, column=0, sticky="nsew")
         response_tab.rowconfigure(1, weight=1)
         response_tab.columnconfigure(0, weight=1)
 
@@ -76,52 +81,43 @@ class TrainTab(ttk.Frame):
         response_header_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
         response_header_frame.columnconfigure(0, weight=1)
 
-        ttk.Label(response_header_frame, text=f"Model Response ({self.target_model})").pack(side="left")
+        ttk.Label(response_header_frame, text=f"Model Response").pack(side="left")
         
         response_btn_subframe = ttk.Frame(response_header_frame)
         response_btn_subframe.pack(side="right")
 
+        # Use Chat Template Checkbox (placed alongside generate and add buttons)
+        initial_chat_setting = bool(get_property("use_chat_template"))
+        self.use_chat_var = tk.BooleanVar(value=initial_chat_setting)
+        self.use_chat_checkbox = ttk.Checkbutton(
+            response_btn_subframe, 
+            text="Use Chat Template", 
+            variable=self.use_chat_var, 
+            command=self.on_chat_template_toggled
+        )
+        self.use_chat_checkbox.pack(side="left", padx=(0, 10))
+
         self.generate_button = ttk.Button(
             response_btn_subframe, text="Generate Answer", command=self.on_generate_clicked
         )
-        self.generate_button.pack(side="left")
+        self.generate_button.pack(side="left", padx=(0, 5))
+
+        self.add_button = ttk.Button(
+            response_btn_subframe, text="Add to Training Data", command=self.on_add_clicked
+        )
+        self.add_button.pack(side="left")
 
         self.response_text = create_styled_text(response_tab, height=12)
         self.response_text.grid(row=1, column=0, sticky="nsew", padx=5, pady=(0, 5))
-        self.response_text.configure(state="disabled")
         
         response_scroll = ttk.Scrollbar(response_tab, orient="vertical", command=self.response_text.yview)
         response_scroll.grid(row=1, column=1, sticky="ns", pady=(0, 5))
         self.response_text.configure(yscrollcommand=response_scroll.set)
 
-        # --- Tab 2: Alternative Answer ---
-        alt_tab = ttk.Frame(self.bottom_notebook)
-        alt_tab.rowconfigure(1, weight=1)
-        alt_tab.columnconfigure(0, weight=1)
+    def on_chat_template_toggled(self):
+        """Updates the global state property when the chat template checkbox changes."""
+        set_property("use_chat_template", self.use_chat_var.get())
 
-        alt_header_frame = ttk.Frame(alt_tab)
-        alt_header_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
-        alt_header_frame.columnconfigure(0, weight=1)
-
-        ttk.Label(alt_header_frame, text="Alternative Answer (Optional override)").pack(side="left")
-        
-        self.add_button = ttk.Button(
-            alt_header_frame, text="Add Training Data", command=self.on_add_clicked
-        )
-        self.add_button.pack(side="right")
-
-        self.alt_text = create_styled_text(alt_tab, height=12)
-        self.alt_text.grid(row=1, column=0, sticky="nsew", padx=5, pady=(0, 5))
-        
-        alt_scroll = ttk.Scrollbar(alt_tab, orient="vertical", command=self.alt_text.yview)
-        alt_scroll.grid(row=1, column=1, sticky="ns", pady=(0, 5))
-        self.alt_text.configure(yscrollcommand=alt_scroll.set)
-
-        # Add tabs to the bottom notebook
-        self.bottom_notebook.add(response_tab, text="Generated Answer")
-        self.bottom_notebook.add(alt_tab, text="Alternative Answer")
-
-    
     def load_random_prompt_text(self):
         """Picks a random prompt from resources/prompts.txt and populates the prompt box without auto-generating."""
         if not self.prompts_file.exists():
@@ -142,13 +138,10 @@ class TrainTab(ttk.Frame):
             self.prompt_text.delete("1.0", "end")
             self.prompt_text.insert("1.0", chosen_prompt)
 
-            # Clear response and alternative text boxes for the new cycle
-            self.response_text.configure(state="normal")
+            # Clear response text box for the new cycle
             self.response_text.delete("1.0", "end")
-            self.response_text.insert("1.0", "Click 'Generate Answer' to query the model.")
-            self.response_text.configure(state="disabled")
+            self.response_text.insert("1.0", "Click 'Generate Answer' to query the target model, or enter your own answer.")
 
-            self.alt_text.delete("1.0", "end")
             self.current_response = ""
 
         except Exception as e:
@@ -172,41 +165,38 @@ class TrainTab(ttk.Frame):
         self.current_prompt = prompt_content
 
         # Immediately show loading state in response box & force watch cursor
-        self.response_text.configure(state="normal")
         self.response_text.delete("1.0", "end")
         self.response_text.insert("1.0", "Loading...")
-        self.response_text.configure(state="disabled")
-        
-        self.config(cursor="watch")
-        self.update()
 
         try:
-            self.current_response = inference_engine.generate_chat_response(self.current_prompt)
+            if get_property("use_chat_template"):
+                self.current_response = inference_engine.generate_chat_response(self.current_prompt)
+            else:
+                self.current_response = inference_engine.generate_raw_response(self.current_prompt)
+
+            self.response_text.delete("1.0", "end")
+            self.response_text.insert("1.0", self.current_response)
+
         except Exception as e:
             print(f"Inference error: {e}")
             self.current_response = f"[Error during generation: {e}]"
-        finally:
-            self.config(cursor="")
-            self.update()
+            self.response_text.delete("1.0", "end")
+            self.response_text.insert("1.0", self.current_response)
 
-        # Update response box with final output
-        self.response_text.configure(state="normal")
-        self.response_text.delete("1.0", "end")
-        self.response_text.insert("1.0", self.current_response)
-        self.response_text.configure(state="disabled")
+
+
 
     def on_add_clicked(self):
-        """Saves the prompt and either the custom alternative answer or model response to dataset."""
+        """Saves the prompt and whatever answer is currently in the response box to the dataset."""
         prompt_content = self.prompt_text.get("1.0", "end-1c").strip()
         if not prompt_content:
             messagebox.showwarning("Warning", "No active prompt available to save.")
             return
 
-        alternative_answer = self.alt_text.get("1.0", "end-1c").strip()
-        answer_to_save = alternative_answer if alternative_answer else self.current_response
+        answer_to_save = self.response_text.get("1.0", "end-1c").strip()
 
-        if not answer_to_save:
-            messagebox.showwarning("Warning", "No response or alternative answer available to save. Please generate or type an answer.")
+        if not answer_to_save or answer_to_save == "Click 'Generate Answer' to query the model." or answer_to_save == "Loading...":
+            messagebox.showwarning("Warning", "No valid response available to save. Please generate or type an answer first.")
             return
 
         record = {

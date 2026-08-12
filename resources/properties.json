@@ -5,21 +5,19 @@
 
     "dataset_path": "resources/working_dataset.jsonl",
 
-    "perform_quantization": false,
-    "quantization_bits": 4,
+    "chat_template_path": "resources/chat_template_llama.jinja",
 
     "lora_batch_size": 1,
     "lora_num_layers": 8,
     "lora_iters": 150,
     "lora_learning_rate": 2e-5,
 
+    "perform_quantization": false,
+    "quantization_bits": 4,
+
     "max_inference_tokens": 256,
     "inference_temperature": 0.7,
-
-    "BEGIN_CONVERSATION_TOKEN": "<|begin_of_text|>",
-    "BEGIN_MESSAGE_TOKEN": "<|start_header_id|>",
-    "END_MESSAGE_HEADER_TOKEN": "<|end_header_id|>",
-    "END_MESSAGE_TOKEN": "<|eot_id|>"
+    "use_chat_template": true
 
 }
 

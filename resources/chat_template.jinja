@@ -1,7 +1,10 @@
-{{ BEGIN_CONVERSATION_TOKEN }}
+<|begin_of_text|>
 {%- for message in messages -%}
-{{ BEGIN_MESSAGE_TOKEN }}{{ message['role'] }}{{ END_MESSAGE_HEADER_TOKEN }}{{ message['content'] }}{{ END_MESSAGE_TOKEN }}
+<|start_header_id|>{{ message['role'] }}<|end_header_id|>
+
+{{ message['content'] }}<|eot_id|>
 {%- endfor -%}
 {%- if add_generation_prompt -%}
-{{ BEGIN_MESSAGE_TOKEN }}assistant{{ END_MESSAGE_HEADER_TOKEN }}
+<|start_header_id|>assistant<|end_header_id|>
+
 {%- endif -%}

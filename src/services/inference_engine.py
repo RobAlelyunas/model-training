@@ -13,19 +13,31 @@ class InferenceEngine:
     def global_state_change(self):
         new_model_path = f"models/targets/{get_property('target_model')}"
         if self.is_model_loaded() and self.model_path != new_model_path:
-            print(f"[InferenceEngine] Target model changed to '{new_model_path}', reloading model...")
-            self.unload_model()
+            self.model_path = new_model_path
             self.load_model()
+        else:
+            self.model_path = new_model_path
 
     def load_model(self):
+        if self.is_model_loaded():
+            self.unload_model()  # Unload the current model before loading a new one
         self.model, self.tokenizer, *_ = load(self.model_path)
         print(f"Loaded MLX model from {self.model_path}...")
 
     def unload_model(self):
-        """Unloads the model and tokenizer references to free up memory."""
+        """Unloads the model and forces garbage collection to free up memory."""
         if self.is_model_loaded():
             self.model = None
             self.tokenizer = None
+            
+            # Force Python garbage collection to clean up unreferenced tensors
+            import gc
+            gc.collect()
+            
+            # Force MLX to release cached memory back to the OS using the current API
+            import mlx.core as mx
+            mx.clear_cache()
+                
             print("[InferenceEngine] Model unloaded to free memory.")
         else:
             print("[InferenceEngine] No model currently loaded.")

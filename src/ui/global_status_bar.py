@@ -23,7 +23,7 @@ class GlobalStatusBar(ttk.Frame):
     def notify_global_state_change(self):
         """Refreshes the drop-downs to reflect any changes in global state."""
         self.refresh()
-        
+
     def create_widgets(self):
         # Configure a 3-column grid layout where each column expands evenly to fill the width
         self.columnconfigure(0, weight=1)
@@ -153,14 +153,3 @@ class GlobalStatusBar(ttk.Frame):
     def on_target_changed(self, target_name):
         if target_name:
             set_property("target_model", target_name)
-            self.trigger_model_reload(target_name)
-
-    def trigger_model_reload(self, target_name: str):
-        def _reload_task():
-            try:
-                inference_engine.unload_model()
-                inference_engine.load_model()
-            except Exception:
-                pass
-
-        threading.Thread(target=_reload_task, daemon=True).start()

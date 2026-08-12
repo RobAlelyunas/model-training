@@ -35,7 +35,7 @@ class TrainingApp(tk.Tk):
         self.global_help_label.bind("<Button-1>", lambda e: self.show_context_help())
 
         self.train_tab = TrainTab(self.notebook)
-        self.notebook.add(self.train_tab, text="Train Model")
+        self.notebook.add(self.train_tab, text="Interactive Training")
 
         self.apply_tab = ApplyTab(self.notebook)
         self.notebook.add(self.apply_tab, text="Apply Training")

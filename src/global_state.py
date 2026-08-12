@@ -33,6 +33,7 @@ def _init_state():
 
     # 3. set additional global state as needed
     _state["dataset_version"] = 0
+    _state["custom_target"] = None
 
 _init_state()
 
