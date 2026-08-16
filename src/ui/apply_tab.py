@@ -10,7 +10,7 @@ from src.ui.ui_theme import (
     LOG_FG_CONTROLLER, 
     LOG_FG_ERROR
 )
-from src.global_state import get_property, register_state_change_handler, set_property
+from src.core.global_state import get_property, register_state_change_handler, set_property
 from src.ui.ui_helpers import run_background
 
 

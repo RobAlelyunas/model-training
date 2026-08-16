@@ -12,7 +12,7 @@ BEGIN_CONVERSATION_TOKEN = ""
 BEGIN_MESSAGE_TOKEN = "<|im_start|>"
 END_MESSAGE_HEADER_TOKEN = ""
 END_MESSAGE_TOKEN = "<|im_end|>"
-### property: base_model
+### property: base_model 
  This code was tested mainly on Meta-LLama-3-8B which can be downloaded from HuggingFace。 Install your base model in the deps/ directory and point to it here.
 ### property: dist_model_name
 This is the name to use to deploy the final quantized and trained model to the dist directory.  Its also the model that will be used for inferences. 

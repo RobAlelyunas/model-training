@@ -1,3 +1,4 @@
+altgraph==0.17.5
 annotated-doc==0.0.4
 anyio==4.13.0
 certifi==2026.5.20
@@ -15,6 +16,7 @@ huggingface_hub==1.17.0
 idna==3.17
 Jinja2==3.1.6
 llama_cpp_python==0.3.29
+macholib==1.16.4
 markdown-it-py==4.2.0
 MarkupSafe==3.0.3
 mdurl==0.1.2
@@ -29,6 +31,8 @@ pandas==3.0.3
 protobuf==7.35.0
 pyarrow==24.0.0
 Pygments==2.20.0
+pyinstaller==6.22.0
+pyinstaller-hooks-contrib==2026.6
 python-dateutil==2.9.0.post0
 PyYAML==6.0.3
 regex==2026.5.9

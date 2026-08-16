@@ -1,28 +1,29 @@
 from mlx_lm import load, generate
 from mlx_lm.sample_utils import make_sampler
-from src.global_state import get_property, register_state_change_handler
+from src.core.global_state import get_property, register_state_change_handler
+from src.core.storage import get_target_models_dir
 
 class InferenceEngine:
     def __init__(self):
         self.model = None
         self.tokenizer = None
-        self.model_path = f"models/targets/{get_property('target_model')}"
-        self.load_model()  # Load the model at initialization
+        self.target_model = get_property('target_model')
         register_state_change_handler(self.global_state_change)
 
     def global_state_change(self):
-        new_model_path = f"models/targets/{get_property('target_model')}"
-        if self.is_model_loaded() and self.model_path != new_model_path:
-            self.model_path = new_model_path
-            self.load_model()
-        else:
-            self.model_path = new_model_path
+        new_model = get_property('target_model')
+        if self.target_model != new_model:
+            self.target_model = new_model
+            self.load_model()           
 
     def load_model(self):
+        if not self.target_model:
+            return
+        model_path = get_target_models_dir() / self.target_model
         if self.is_model_loaded():
             self.unload_model()  # Unload the current model before loading a new one
-        self.model, self.tokenizer, *_ = load(self.model_path)
-        print(f"Loaded MLX model from {self.model_path}...")
+        self.model, self.tokenizer, *_ = load(model_path)
+        print(f"Loaded MLX model from {model_path}...")
 
     def unload_model(self):
         """Unloads the model and forces garbage collection to free up memory."""

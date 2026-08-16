@@ -3,21 +3,22 @@ import random
 import tkinter as tk
 from tkinter import messagebox, ttk
 from pathlib import Path
-from src.global_state import get_property
+from src.core.global_state import get_property
 from src.services.inference_engine import inference_engine
 from src.ui.ui_helpers import run_background
 from src.ui.ui_theme import create_styled_text
-from src.global_state import register_state_change_handler
-from src.global_state import set_property
+from src.core.global_state import register_state_change_handler
+from src.core.global_state import set_property
+from src.core.storage import get_datasets_dir, get_references_dir, get_target_models_dir
 
 class TrainTab(ttk.Frame):
     def __init__(self, parent):
         super().__init__(parent)
         self.parent_notebook = parent
-        self.prompts_file = Path("resources/prompts.txt")
-        self.working_dataset_path = Path(get_property("dataset_path"))
+        self.prompts_file = Path(get_references_dir() / "prompts.txt")
+        self.working_dataset_path = Path(get_datasets_dir() / get_property("dataset"))
         self.target_model = get_property("target_model")
-        self.target_model_path = Path(f"models/targets/{self.target_model}")
+        self.target_model_path = get_target_models_dir() / self.target_model
         self.current_prompt = ""
         self.current_response = ""
         self.create_widgets()
@@ -25,10 +26,10 @@ class TrainTab(ttk.Frame):
 
     def global_state_changed(self):
         """Reloads cached global properties when state changes."""
-        self.working_dataset_path = Path(get_property("dataset_path"))
+        self.working_dataset_path = Path(get_datasets_dir() / get_property("dataset"))
         self.target_model = get_property("target_model")
-        self.target_model_path = Path(f"models/targets/{self.target_model}")
-        
+        self.target_model_path = get_target_models_dir() / self.target_model
+
         # Sync checkbox state if global property changes externally
         if hasattr(self, "use_chat_var"):
             current_chat_prop = bool(get_property("use_chat_template"))
@@ -119,7 +120,7 @@ class TrainTab(ttk.Frame):
         set_property("use_chat_template", self.use_chat_var.get())
 
     def load_random_prompt_text(self):
-        """Picks a random prompt from resources/prompts.txt and populates the prompt box without auto-generating."""
+        """Picks a random prompt from prompts.txt and populates the prompt box without auto-generating."""
         if not self.prompts_file.exists():
             messagebox.showwarning("Warning", f"Prompt file not found at {self.prompts_file}")
             return

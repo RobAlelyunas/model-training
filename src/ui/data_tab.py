@@ -2,14 +2,15 @@ import json
 import tkinter as tk
 from tkinter import messagebox, ttk
 from pathlib import Path
-from src.global_state import get_property, register_state_change_handler
+from src.core.global_state import get_property, register_state_change_handler
+from src.core.storage import get_datasets_dir
 from src.ui.ui_theme import create_styled_text
 
 class DataTab(ttk.Frame):
     def __init__(self, parent):
         super().__init__(parent)
 
-        self.data_path = Path(get_property("dataset_path"))
+        self.dataset = get_property("dataset")
         self.file_version = get_property("dataset_version")
         self.current_index = 0
         self.is_dirty = False
@@ -21,10 +22,10 @@ class DataTab(ttk.Frame):
 
     def global_state_changed(self):
         new_file_version = get_property("dataset_version")
-        new_data_path = Path(get_property("dataset_path"))
-        if new_data_path != self.data_path:
-            # File path changed: switch file, reset index to 0, and load
-            self.data_path = new_data_path
+        new_dataset = get_property("dataset")
+        if new_dataset != self.dataset:
+            # dataset changed: switch file, reset index to 0, and load
+            self.dataset = new_dataset
             self.file_version = new_file_version
             self.current_index = 0
             self.load_current_record()
@@ -103,21 +104,23 @@ class DataTab(ttk.Frame):
         self.unsaved_badge.config(text="⚠️ Unsaved Changes")
 
     def _get_total_line_count(self) -> int:
-        if not self.data_path.exists():
+        if not self.dataset:
             return 0
         count = 0
-        with open(self.data_path, "r", encoding="utf-8") as f:
+        data_path = get_datasets_dir() / self.dataset
+        with open(data_path, "r", encoding="utf-8") as f:
             for line in f:
                 if line.strip():
                     count += 1
         return count
 
     def _read_line_from_file(self, index: int) -> dict:
-        if not self.data_path.exists():
+        if not self.dataset:
             return {"prompt": "", "completion": ""}
         
         current_idx = 0
-        with open(self.data_path, "r", encoding="utf-8") as f:
+        data_path = get_datasets_dir() / self.dataset
+        with open(data_path, "r", encoding="utf-8") as f:
             for line in f:
                 if line.strip():
                     if current_idx == index:
@@ -153,7 +156,7 @@ class DataTab(ttk.Frame):
         self.unsaved_badge.config(text="")
 
         self.index_label.config(text=f"Record: {self.current_index + 1} / {total}")
-        self.info_label.config(text=f"Loaded record {self.current_index + 1} from {self.data_path.name}")
+        self.info_label.config(text=f"Loaded record {self.current_index + 1} from {self.dataset}")
 
     def save_current_record(self) -> bool:
         """Saves the active record to disk only if modifications were made."""
@@ -165,10 +168,10 @@ class DataTab(ttk.Frame):
         new_line_str = json.dumps({"prompt": prompt, "completion": completion}, ensure_ascii=False) + "\n"
 
         try:
-            self.data_path.parent.mkdir(parents=True, exist_ok=True)
             lines = []
-            if self.data_path.exists():
-                with open(self.data_path, "r", encoding="utf-8") as f:
+            if self.dataset:
+                data_path = get_datasets_dir() / self.dataset
+                with open(data_path, "r", encoding="utf-8") as f:
                     lines = f.readlines()
 
             while len(lines) <= self.current_index:
@@ -176,7 +179,7 @@ class DataTab(ttk.Frame):
 
             lines[self.current_index] = new_line_str
 
-            with open(self.data_path, "w", encoding="utf-8") as f:
+            with open(data_path, "w", encoding="utf-8") as f:
                 f.writelines(lines)
 
             self.is_dirty = False
@@ -202,8 +205,9 @@ class DataTab(ttk.Frame):
     def add_record(self):
         if self.save_current_record():
             blank_line = json.dumps({"prompt": "", "completion": ""}, ensure_ascii=False) + "\n"
+            data_path = get_datasets_dir() / self.dataset
             try:
-                with open(self.data_path, "a", encoding="utf-8") as f:
+                with open(data_path, "a", encoding="utf-8") as f:
                     f.write(blank_line)
                 
                 self.current_index = self._get_total_line_count() - 1
@@ -214,8 +218,9 @@ class DataTab(ttk.Frame):
     def delete_record(self):
         try:
             lines = []
-            if self.data_path.exists():
-                with open(self.data_path, "r", encoding="utf-8") as f:
+            if self.dataset:
+                data_path = get_datasets_dir() / self.dataset
+                with open(data_path, "r", encoding="utf-8") as f:
                     lines = f.readlines()
 
             if len(lines) <= 1:
@@ -228,7 +233,7 @@ class DataTab(ttk.Frame):
             if 0 <= self.current_index < len(lines):
                 lines.pop(self.current_index)
 
-            with open(self.data_path, "w", encoding="utf-8") as f:
+            with open(data_path, "w", encoding="utf-8") as f:
                 f.writelines(lines)
 
             if self.current_index >= len(lines):

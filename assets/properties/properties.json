@@ -1,11 +1,9 @@
 {
 
-    "source_model": "Meta-Llama-3-8B-4bit",
-    "target_model": "Meta-Llama-3-8B-4bit-MyModel",
-
-    "dataset_path": "resources/working_dataset.jsonl",
-
-    "chat_template_path": "resources/chat_template_llama.jinja",
+    "source_model": "",
+    "target_model": "",
+    "dataset": "",
+    "chat_template": "",
 
     "lora_batch_size": 1,
     "lora_num_layers": 8,
@@ -20,4 +18,3 @@
     "use_chat_template": true
 
 }
-

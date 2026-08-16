@@ -1,18 +1,20 @@
+from src.core.storage import get_properties_dir
 import json
 import sys
 from pathlib import Path
 
-CONFIG_PATH = Path("resources") / "properties.json"
-
 _state = {}
 _state_change_handlers = []
 
-def _init_state():
+def initialize_state():
     global _state
     # 1. read global state from the properties.json file first
-    if CONFIG_PATH.exists():
-        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-            _state = json.load(f)
+    CONFIG_PATH = get_properties_dir() / "properties.json"
+    if not CONFIG_PATH.exists():
+        raise FileNotFoundError(f"Properties file not found at {CONFIG_PATH}")
+
+    with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+        _state = json.load(f)
 
     # parse any command line arguments
     args = sys.argv[1:]
@@ -35,7 +37,7 @@ def _init_state():
     _state["dataset_version"] = 0
     _state["custom_target"] = None
 
-_init_state()
+    print(f"[Global State] Initialized with properties: {_state}")
 
 def register_state_change_handler(handler):
     """Registers a parameterless callback function to be called on global state changes."""

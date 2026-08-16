@@ -2,7 +2,8 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from pathlib import Path
 import threading
-from src.global_state import get_property, set_property
+from src.core.global_state import get_property, set_property
+from src.core.storage import get_datasets_dir, get_source_models_dir, get_target_models_dir
 from src.services.inference_engine import inference_engine
 
 
@@ -88,7 +89,7 @@ class GlobalStatusBar(ttk.Frame):
         """Scans local file system directories to populate all three drop-downs."""
         # --- Populate Sources ---
         self.source_mapping.clear()
-        source_dir = Path("models/sources")
+        source_dir = get_source_models_dir()
         source_items = []
         if source_dir.exists() and source_dir.is_dir():
             for child in sorted(source_dir.iterdir()):
@@ -103,7 +104,7 @@ class GlobalStatusBar(ttk.Frame):
 
         # --- Populate Targets ---
         self.target_mapping.clear()
-        target_dir = Path("models/targets")
+        target_dir = get_target_models_dir()
         target_items = []
         if target_dir.exists() and target_dir.is_dir():
             for child in sorted(target_dir.iterdir()):
@@ -118,17 +119,18 @@ class GlobalStatusBar(ttk.Frame):
 
         # --- Populate Datasets ---
         self.dataset_mapping.clear()
-        resources_dir = Path("resources")
+        datasets_dir = get_datasets_dir()
         dataset_items = []
-        if resources_dir.exists() and resources_dir.is_dir():
-            for child in sorted(resources_dir.glob("*.jsonl")):
+        if datasets_dir.exists() and datasets_dir.is_dir():
+            for child in sorted(datasets_dir.glob("*.jsonl")):
                 if child.is_file():
                     dataset_items.append(child.name)
                     self.dataset_mapping[child.name] = str(child)
 
-        current_dataset_path = get_property("dataset_path")
-        current_dataset = Path(current_dataset_path).name if current_dataset_path else ""
-        
+        current_dataset = get_property("dataset")
+        if not current_dataset:
+            current_dataset = dataset_items[0] if dataset_items else ""
+
         def _internal_dataset_callback(val):
             if val in self.dataset_mapping:
                 set_property("dataset_path", self.dataset_mapping[val])

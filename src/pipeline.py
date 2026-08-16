@@ -1,7 +1,11 @@
-import time
-from src.services.training_service import TrainingService
+from src.core.initialize import init
 
 def main():
+
+    # initialize global state before doing anything
+    init()
+
+    from src.services.training_service import TrainingService
 
     print("Initializing Training Pipeline (Headless Mode)...")
     service = TrainingService()

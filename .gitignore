@@ -1,6 +1,7 @@
 __pycache__
-models/sources/*
-models/targets/*
+runtime
+build
+dist
 generated
 .venv
 .DS_Store
