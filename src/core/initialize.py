@@ -1,5 +1,8 @@
+import subprocess
 import sys
+import platform
 from pathlib import Path
+
 
 _INITIALIZED = False
 
@@ -8,7 +11,10 @@ def init():
     global _INITIALIZED
     if _INITIALIZED:
         return
-        
+
+    total_memory_gb = check_hardware()
+    print(f"[Bootstrap] Apple Silicon with total memory {total_memory_gb}")
+
     from src.core.storage import initialize_app_storage, get_properties_dir
     
     # A fresh install won't have the properties file yet
@@ -25,7 +31,32 @@ def init():
 
     setup_logging()
 
+    from src.core.global_state import set_property 
+    set_property("total_memory_gb", total_memory_gb)
+
     _INITIALIZED = True
+
+def abort_due_to_incompatible_hardware(msg):
+    # This runs before there is a UI, so set up a quick UI
+    import tkinter as tk
+    from tkinter import messagebox
+    root = tk.Tk()
+    root.withdraw()
+    messagebox.showerror(title="Incompatible Hardware",
+                        message=msg,
+                        parent=root)
+    root.destroy()
+    sys.exit(1)
+
+def check_hardware():
+    if sys.platform != "darwinx":
+        abort_due_to_incompatible_hardware("This software can only run on MacOs, Exiting ...")
+    if platform.machine() != "arm64":
+        abort_due_to_incompatible_hardware(f"Apple Silicon processor required (for native model training support), your processor type is {platform.machine()}, Exiting ...")
+    result = subprocess.run(["sysctl", "-n", "hw.memsize"], capture_output=True, text=True, check=True)
+    total_memory_bytes = int(result.stdout.strip()) 
+    total_memory_gb = round(total_memory_bytes / (1024 ** 3), 1)
+    return total_memory_gb
 
 def setup_logging():
     """

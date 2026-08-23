@@ -38,12 +38,6 @@ class DataTab(ttk.Frame):
         top_frame = ttk.Frame(self)
         top_frame.pack(fill="x", padx=15, pady=15)
 
-        self.unsaved_badge = ttk.Label(top_frame, text="", foreground="#d9534f")
-        self.unsaved_badge.pack(side="right", padx=15)
-
-        self.info_label = ttk.Label(top_frame, text="")
-        self.info_label.pack(side="left", padx=15)
-
         # Navigation and Record count frame
         nav_frame = ttk.Frame(self)
         nav_frame.pack(fill="x", padx=15, pady=5)
@@ -101,7 +95,6 @@ class DataTab(ttk.Frame):
             if w.edit_modified():
                 w.edit_modified(False)
         self.is_dirty = True
-        self.unsaved_badge.config(text="⚠️ Unsaved Changes")
 
     def _get_total_line_count(self) -> int:
         if not self.dataset:
@@ -153,10 +146,8 @@ class DataTab(ttk.Frame):
         self.completion_text.insert("1.0", record.get("completion", ""))
 
         self.is_dirty = False
-        self.unsaved_badge.config(text="")
 
         self.index_label.config(text=f"Record: {self.current_index + 1} / {total}")
-        self.info_label.config(text=f"Loaded record {self.current_index + 1} from {self.dataset}")
 
     def save_current_record(self) -> bool:
         """Saves the active record to disk only if modifications were made."""
@@ -183,7 +174,6 @@ class DataTab(ttk.Frame):
                 f.writelines(lines)
 
             self.is_dirty = False
-            self.unsaved_badge.config(text="")
             return True
         except Exception as e:
             messagebox.showerror("Error", f"Failed to save record:\n{e}")
