@@ -49,7 +49,7 @@ def abort_due_to_incompatible_hardware(msg):
     sys.exit(1)
 
 def check_hardware():
-    if sys.platform != "darwinx":
+    if sys.platform != "darwin":
         abort_due_to_incompatible_hardware("This software can only run on MacOs, Exiting ...")
     if platform.machine() != "arm64":
         abort_due_to_incompatible_hardware(f"Apple Silicon processor required (for native model training support), your processor type is {platform.machine()}, Exiting ...")

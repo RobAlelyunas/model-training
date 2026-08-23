@@ -77,31 +77,102 @@ class ApplyTab(ttk.Frame):
         )
         self.cancel_button.pack(side="left", padx=2)
 
-        # Hyperparameters Frame (Learning Rate & Iterations)
-        params_frame = ttk.Frame(self)
+        # Hyperparameters Frame (Organized into grid rows for clean alignment)
+        params_frame = ttk.LabelFrame(self, text="Training Hyperparameters", padding=12)
         params_frame.pack(fill="x", padx=15, pady=5)
+
+        # Sub-header bar inside params frame to hold the "Auto Set" button cleanly on the right
+        params_header_frame = ttk.Frame(params_frame)
+        params_header_frame.pack(fill="x", pady=(0, 8))
+
+        ttk.Label(params_header_frame, text="Configure training settings or auto-calculate based on environment:", font=("Arial", 9, "italic")).pack(side="left", padx=2)
+        
+        self.auto_set_button = ttk.Button(
+            params_header_frame, text="Auto Set", command=self.auto_set_parameters, width=10
+        )
+        self.auto_set_button.pack(side="right", padx=2)
 
         # Configure a custom ttk style to right-justify text inside Entry widgets
         style = ttk.Style()
         style.configure("RightEntry.TEntry", justify="right")
 
-        # Learning Rate Configuration
-        ttk.Label(params_frame, text="Learning Rate:").pack(side="left", padx=(5, 2))
-        
-        default_lr = str(get_property("lora_learning_rate") or "2e-05")
+        # Row 0: Iterations, Batch Size, Layers, Learning Rate (Highest order to lowest order left-to-right)
+        row0_frame = ttk.Frame(params_frame)
+        row0_frame.pack(fill="x", pady=(0, 8))
+
+        # 1. Iterations
+        ttk.Label(row0_frame, text="Iterations:").pack(side="left", padx=(0, 2))
+        try:
+            default_iters = str(get_property("lora_iters"))
+        except KeyError:
+            default_iters = "150"
+        self.iters_var = tk.StringVar(value=default_iters)
+        self.iters_entry = ttk.Entry(row0_frame, textvariable=self.iters_var, width=6, style="RightEntry.TEntry")
+        self.iters_entry.pack(side="left", padx=(0, 15))
+        self.iters_entry.bind("<FocusOut>", lambda e: self.save_hyperparameters())
+
+        # 2. Batch Size
+        ttk.Label(row0_frame, text="Batch Size:").pack(side="left", padx=(0, 2))
+        try:
+            default_batch = str(get_property("lora_batch_size"))
+        except KeyError:
+            default_batch = "1"
+        self.batch_var = tk.StringVar(value=default_batch)
+        self.batch_entry = ttk.Entry(row0_frame, textvariable=self.batch_var, width=5, style="RightEntry.TEntry")
+        self.batch_entry.pack(side="left", padx=(0, 15))
+        self.batch_entry.bind("<FocusOut>", lambda e: self.save_hyperparameters())
+
+        # 3. Layers
+        ttk.Label(row0_frame, text="Layers:").pack(side="left", padx=(0, 2))
+        try:
+            default_layers = str(get_property("lora_num_layers"))
+        except KeyError:
+            default_layers = "8"
+        self.layers_var = tk.StringVar(value=default_layers)
+        self.layers_entry = ttk.Entry(row0_frame, textvariable=self.layers_var, width=5, style="RightEntry.TEntry")
+        self.layers_entry.pack(side="left", padx=(0, 15))
+        self.layers_entry.bind("<FocusOut>", lambda e: self.save_hyperparameters())
+
+        # 4. Learning Rate
+        ttk.Label(row0_frame, text="Learning Rate:").pack(side="left", padx=(0, 2))
+        try:
+            default_lr = str(get_property("lora_learning_rate"))
+        except KeyError:
+            default_lr = "2e-05"
         self.lr_var = tk.StringVar(value=default_lr)
-        self.lr_entry = ttk.Entry(params_frame, textvariable=self.lr_var, width=10, style="RightEntry.TEntry")
-        self.lr_entry.pack(side="left", padx=(0, 15))
+        self.lr_entry = ttk.Entry(row0_frame, textvariable=self.lr_var, width=10, style="RightEntry.TEntry")
+        self.lr_entry.pack(side="left", padx=(0, 10))
         self.lr_entry.bind("<FocusOut>", lambda e: self.save_hyperparameters())
 
-        # Iterations Configuration (smaller width for 2-4 digit numbers, right justified)
-        ttk.Label(params_frame, text="Iterations:").pack(side="left", padx=(5, 2))
-        
-        default_iters = str(get_property("lora_iters") or "150")
-        self.iters_var = tk.StringVar(value=default_iters)
-        self.iters_entry = ttk.Entry(params_frame, textvariable=self.iters_var, width=6, style="RightEntry.TEntry")
-        self.iters_entry.pack(side="left", padx=(0, 5))
-        self.iters_entry.bind("<FocusOut>", lambda e: self.save_hyperparameters())
+
+        # Row 1: Quantization Settings (Checkbox and Quant Bits)
+        row1_frame = ttk.Frame(params_frame)
+        row1_frame.pack(fill="x")
+
+        # 5. Perform Quantization (Checkbox)
+        try:
+            default_quant_bool = bool(get_property("perform_quantization"))
+        except KeyError:
+            default_quant_bool = False
+        self.quant_var = tk.BooleanVar(value=default_quant_bool)
+        self.quant_chk = ttk.Checkbutton(
+            row1_frame, 
+            text="Perform Quantization", 
+            variable=self.quant_var,
+            command=self.save_hyperparameters
+        )
+        self.quant_chk.pack(side="left", padx=(0, 20))
+
+        # 6. Quantization Bits
+        ttk.Label(row1_frame, text="Quant Bits:").pack(side="left", padx=(0, 2))
+        try:
+            default_qbits = str(get_property("quantization_bits"))
+        except KeyError:
+            default_qbits = "4"
+        self.qbits_var = tk.StringVar(value=default_qbits)
+        self.qbits_entry = ttk.Entry(row1_frame, textvariable=self.qbits_var, width=5, style="RightEntry.TEntry")
+        self.qbits_entry.pack(side="left", padx=(0, 10))
+        self.qbits_entry.bind("<FocusOut>", lambda e: self.save_hyperparameters())
 
         # Center Frame: Real-time Log Streaming Window
         log_frame = ttk.LabelFrame(self, text="Execution Logs")
@@ -123,16 +194,50 @@ class ApplyTab(ttk.Frame):
         self.text_box.tag_config("pipeline_tag", foreground=LOG_FG_PIPELINE, font=("Courier", 10, "bold"))
         self.text_box.tag_config("controller_tag", foreground=LOG_FG_CONTROLLER)
         self.text_box.tag_config("error_tag", foreground=LOG_FG_ERROR, font=("Courier", 10, "bold"))
+
+    def auto_set_parameters(self):
+        """Placeholder for automatically calculating and updating optimal hyperparameters."""
+        messagebox.showinfo(
+            "Auto Set Hyperparameters",
+            "TODO: Automatically calculate optimal parameters based on available RAM, source model size, and dataset record count.",
+            parent=self
+        )
  
     def save_hyperparameters(self):
-        """Saves current values from entry fields to global state when focus shifts away."""
+        """Saves current values from entry fields and checkboxes to global state."""
         lr_val = self.lr_var.get().strip()
         if lr_val:
             set_property("lora_learning_rate", lr_val)
 
         iters_val = self.iters_var.get().strip()
         if iters_val:
-            set_property("lora_iters", iters_val)
+            try:
+                set_property("lora_iters", int(iters_val))
+            except ValueError:
+                set_property("lora_iters", iters_val)
+
+        batch_val = self.batch_var.get().strip()
+        if batch_val:
+            try:
+                set_property("lora_batch_size", int(batch_val))
+            except ValueError:
+                set_property("lora_batch_size", batch_val)
+
+        layers_val = self.layers_var.get().strip()
+        if layers_val:
+            try:
+                set_property("lora_num_layers", int(layers_val))
+            except ValueError:
+                set_property("lora_num_layers", layers_val)
+
+        set_property("perform_quantization", self.quant_var.get())
+
+        qbits_val = self.qbits_var.get().strip()
+        if qbits_val:
+            try:
+                set_property("quantization_bits", int(qbits_val))
+            except ValueError:
+                set_property("quantization_bits", qbits_val)
 
     def start_workflow(self):
         """Kicks off the complete workflow lifecycle cleanly using the background helper."""
