@@ -9,8 +9,16 @@ def init():
     if _INITIALIZED:
         return
         
-    from src.core.storage import initialize_app_storage
-    initialize_app_storage()
+    from src.core.storage import initialize_app_storage, get_properties_dir
+    
+    # A fresh install won't have the properties file yet
+    config_path = get_properties_dir() / "properties.json"
+    first_run = not config_path.exists()
+    
+    print(f"[Bootstrap] First run: {first_run}")
+
+    # Initialize storage, passing the first_run flag
+    initialize_app_storage(first_run=first_run)
 
     from src.core.global_state import initialize_state      
     initialize_state()

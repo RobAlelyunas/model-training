@@ -1,21 +1,23 @@
 import tkinter as tk
 from tkinter import messagebox, ttk
+from src.core.global_state import get_property
+from src.core.storage import get_references_dir
 from src.ui.apply_tab import ApplyTab
 from src.ui.data_tab import DataTab
 from src.ui.train_tab import TrainTab
 from src.ui.setup_tab import SetupTab
 from src.ui.ui_theme import apply_global_theme
-from src.ui.ui_helpers import ensure_setup_complete
 
 class TrainingApp(tk.Tk):
 
     def __init__(self):
         super().__init__()
 
-        self.title("LLM Training Manager")
+        self.title("Interactive Model Training")
         self.geometry("950x700")
         self.minsize(750, 550)
-
+        app_icon = tk.PhotoImage(file=get_references_dir() / "icon.png")
+        self.iconphoto(True,app_icon)
         # Apply the custom theme to the entire application[cite: 4]
         apply_global_theme(self)
 
@@ -51,31 +53,49 @@ class TrainingApp(tk.Tk):
         self.notebook.bind("<<NotebookTabChanged>>", self.on_tab_changed)
 
     def on_tab_changed(self, event):
-        """Enforces the setup complete guard by snapping back to Setup first, then alerting."""
-        try:
-            selected_tab_index = self.notebook.index(self.notebook.select())
-        except Exception:
-            return
-
-        # Setup tab (index 0) is always allowed
+        """Guard for tab changes"""
+        selected_tab_index = self.notebook.index(self.notebook.select())
+        source_model = get_property("source_model")
+        target_model = get_property("target_model")
+        dataset = get_property("dataset")
+        chat_template = get_property("chat_template")
         if selected_tab_index == 0:
+            # Setup tab (index 0)
             self.current_tab_index = 0
-            return
-
-        # Check if mandatory setup requirements are met
-        if not ensure_setup_complete():
-            # 1. Snap back to Setup immediately first
-            self.notebook.select(0)
-            self.current_tab_index = 0
-            
-            # 2. Then show the warning message popup centered on the app window
-            messagebox.showwarning(
-                "Setup Required",
-                "Please configure your models, dataset, and chat template in the Setup tab before continuing.",
-                parent=self
-            )
-        else:
-            self.current_tab_index = selected_tab_index
+        elif selected_tab_index == 1:
+            # Interactive Training tab
+            if not target_model or not dataset or not chat_template:
+                self.notebook.select(0)
+                self.current_tab_index = 0
+                messagebox.showinfo(
+                    title="Setup Required",
+                    message="Interactive training requires a selected target model, dataset, and chat template",
+                    parent=self)
+            else:
+                self.current_tab_index = 1
+        elif selected_tab_index == 2:
+            # Apply Training tab
+            if not source_model or not target_model or not dataset or not chat_template:
+                self.notebook.select(0)
+                self.current_tab_index = 0
+                messagebox.showinfo(
+                    title="Setup Required",
+                    message="Apply training requires a selected source model, target model, dataset, and chat template",
+                    parent=self)
+            else:
+                self.current_tab_index = 2
+        elif selected_tab_index == 3:
+            # Dataset editor tab
+            if not dataset:
+                self.notebook.select(0)
+                self.current_tab_index = 0
+                messagebox.showinfo(
+                    title="Setup Required",
+                    message="Dataset editor requires a selected dataset",
+                    parent=self)
+            else:
+                self.current_tab_index = 3
+    
 
     def show_context_help(self):
         """Determines the active tab and displays the corresponding context-dependent help message."""

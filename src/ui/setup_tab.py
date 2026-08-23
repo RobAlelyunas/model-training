@@ -1,5 +1,9 @@
 import tkinter as tk
 from tkinter import messagebox, simpledialog, ttk
+import subprocess
+import platform
+import shutil
+import json
 from src.core.storage import (
     get_source_models_dir,
     get_target_models_dir,
@@ -9,10 +13,6 @@ from src.core.storage import (
 from src.core.global_state import set_property, get_property
 
 class SetupTab(ttk.Frame):
-    """
-    Setup Tab: Full-width top panel for Hardware Verification with an interactive hyperlink, 
-    followed by a 3-panel grid layout. Panel 5 (Chat Template) updated with reminder verbiage.
-    """
     def __init__(self, parent):
         super().__init__(parent)
         
@@ -20,33 +20,16 @@ class SetupTab(ttk.Frame):
         content_frame = ttk.Frame(self, padding=20)
         content_frame.pack(expand=True, fill="both")
 
-        # --- TOP LEVEL BAR: Title Only ---
         top_bar_frame = ttk.Frame(content_frame)
         top_bar_frame.pack(fill="x", pady=(0, 10))
 
         title_label = ttk.Label(
             top_bar_frame, 
-            text="Environment Setup", 
+            text="Setup", 
             font=("Helvetica", 14, "bold")
         )
         title_label.pack(side="left", anchor="w")
 
-        # --- PANEL 1 (Full Width): 1. Verify My Mac ---
-        verify_frame = ttk.LabelFrame(content_frame, text="1. Hardware Verification", padding=15)
-        verify_frame.pack(fill="x", pady=(0, 10))
-
-        verify_inner = ttk.Frame(verify_frame)
-        verify_inner.pack(fill="x")
-
-        # Hyperlink for hardware verification instead of a separate button
-        link_verify = ttk.Label(verify_inner, text="Verify this Mac", foreground="blue", cursor="hand2")
-        link_verify.pack(side="left")
-        link_verify.bind("<Button-1>", lambda e: self.on_verify_mac())
-
-        verify_text = ttk.Label(verify_inner, text=" and check its available memory.")
-        verify_text.pack(side="left", anchor="w")
-
-        # --- GRID CONTAINER FOR THE REMAINING 3 PANELS ---
         grid_frame = ttk.Frame(content_frame)
         grid_frame.pack(expand=True, fill="both")
 
@@ -55,213 +38,178 @@ class SetupTab(ttk.Frame):
         grid_frame.rowconfigure(0, weight=1, uniform="row")
         grid_frame.rowconfigure(1, weight=1, uniform="row")
 
-        # --- PANEL 2 (Top-Left of Grid): Source Model ---
-        source_frame = ttk.LabelFrame(grid_frame, text="2. Source Model", padding=15)
+        # =========================================================================
+        # --- PANEL 1 (Top-Left of Grid): Source Model ---
+        # =========================================================================
+        source_frame = ttk.LabelFrame(grid_frame, text="1. Source Model", padding=15)
         source_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 10), pady=(0, 10))
 
-        # Dropdown directly at the top
+        # 1. Dropdown at the top
         self.source_var = tk.StringVar()
         self.source_combo = ttk.Combobox(
             source_frame, 
             textvariable=self.source_var, 
             state="readonly"
         )
-        self.source_combo.pack(fill="x", anchor="w", pady=(0, 15))
-
+        self.source_combo.pack(fill="x", anchor="w", pady=(0, 18))
         self.source_combo.bind("<<ComboboxSelected>>", self.on_source_selected)
-
-        # Informative helper text container below
-        help_container = ttk.Frame(source_frame)
-        help_container.pack(fill="x", pady=(0, 0))
-
-        # Line 1: "To make more source models available,"
-        line1_frame = ttk.Frame(help_container)
-        line1_frame.pack(fill="x", anchor="w", pady=(0, 1))
-
-        lbl_line1 = ttk.Label(line1_frame, text="To make more source models available,")
-        lbl_line1.pack(side="left")
-
-        # Line 2: Hyperlink "download a starter model"
-        line2_frame = ttk.Frame(help_container)
-        line2_frame.pack(fill="x", anchor="w", pady=(0, 1))
-
-        link_starter = ttk.Label(line2_frame, text="download a starter model", foreground="blue", cursor="hand2")
-        link_starter.pack(side="left")
-        link_starter.bind("<Button-1>", lambda e: messagebox.showinfo("Download", "Downloading starter model", parent=self))
-
-        # Line 3: "or install a model from Hugging Face to:"
-        line3_frame = ttk.Frame(help_container)
-        line3_frame.pack(fill="x", anchor="w", pady=(0, 2))
-
-        lbl_mid = ttk.Label(line3_frame, text="or install a model from Hugging Face to:")
-        lbl_mid.pack(side="left")
-
-        # Line 4: Compact path display with a small copy hyperlink
+        self.source_combo.bind("<Button-1>", lambda e: self.load_source_models())
+        
+        # 2. Directory path box immediately below dropdown
         source_path_str = str(get_source_models_dir())
-        path_frame = ttk.Frame(help_container)
-        path_frame.pack(fill="x", anchor="w", pady=(0, 2))
+        self.path_text = tk.Text(source_frame, height=3, font=("Courier", 12), wrap="char", relief="solid", bd=1)
+        self.path_text.insert("1.0", source_path_str)
+        self.path_text.configure(state="disabled", bg="#f0f0f0")
+        self.path_text.pack(fill="x", pady=(0, 0))
 
-        self.path_entry = ttk.Entry(path_frame, font=("Courier", 9))
-        self.path_entry.insert(0, source_path_str)
-        self.path_entry.configure(state="readonly")
-        self.path_entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
+        # 3. Left-justified links line underneath the path box
+        src_links_frame = ttk.Frame(source_frame)
+        src_links_frame.pack(fill="x", anchor="w", pady=(0, 5))
+        link_open = ttk.Label(src_links_frame, text="[open directory]", foreground="blue", cursor="hand2")
+        link_open.pack(side="right")
+        link_open.bind("<Button-1>", lambda e: self.open_directory(source_path_str))
 
-        link_copy = ttk.Label(path_frame, text="[copy]", foreground="blue", cursor="hand2")
-        link_copy.pack(side="left")
-        link_copy.bind("<Button-1>", lambda e: self.copy_to_clipboard(source_path_str))
+        # 4. Download starter model button
+        download_starter_btn = ttk.Button(source_frame, text="Download Starter Model", command=self.on_download_starter_model)
+        download_starter_btn.pack(side="left")
 
-        # Line 5: Refresh instruction with refresh hyperlink
-        line5_frame = ttk.Frame(help_container)
-        line5_frame.pack(fill="x", anchor="w")
-
-        lbl_suffix = ttk.Label(line5_frame, text="Then click ")
-        lbl_suffix.pack(side="left")
-
-        link_refresh = ttk.Label(line5_frame, text="refresh", foreground="blue", cursor="hand2")
-        link_refresh.pack(side="left")
-        link_refresh.bind("<Button-1>", lambda e: self.load_source_models())
-
-        lbl_end = ttk.Label(line5_frame, text=" to update.")
-        lbl_end.pack(side="left")
-
-        # --- PANEL 3 (Top-Right of Grid): Target Model ---
-        target_frame = ttk.LabelFrame(grid_frame, text="3. Target Model", padding=15)
+        # =========================================================================
+        # --- PANEL 2 (Top-Right of Grid): Target Model ---
+        # =========================================================================
+        target_frame = ttk.LabelFrame(grid_frame, text="2. Target Model", padding=15)
         target_frame.grid(row=0, column=1, sticky="nsew", padx=(10, 0), pady=(0, 10))
 
-        # Dropdown directly at the top
+        # 1. Dropdown at the top
         self.target_var = tk.StringVar()
         self.target_combo = ttk.Combobox(
             target_frame, 
-            textvariable=self.target_var, 
+            textvariable=self.target_var,
             state="readonly"
         )
-        self.target_combo.pack(fill="x", anchor="w", pady=(0, 15))
+        self.target_combo.pack(fill="x", anchor="w", pady=(0, 18))
         self.target_combo.bind("<<ComboboxSelected>>", self.on_target_selected)
+        self.target_combo.bind("<Button-1>", lambda e: self.load_target_models())
 
-        # Informative helper text container below
-        target_help_container = ttk.Frame(target_frame)
-        target_help_container.pack(fill="x", pady=(0, 0))
-
-        # Line 1: Purpose statement
-        t_line1_frame = ttk.Frame(target_help_container)
-        t_line1_frame.pack(fill="x", anchor="w", pady=(0, 1))
-
-        lbl_t_line1 = ttk.Label(t_line1_frame, text="A target is needed for interactive training.")
-        lbl_t_line1.pack(side="left")
-
-        # Line 2: Action instruction with hyperlink "copy the source model"
-        t_line2_frame = ttk.Frame(target_help_container)
-        t_line2_frame.pack(fill="x", anchor="w", pady=(0, 1))
-
-        lbl_t_pre = ttk.Label(t_line2_frame, text="To get started on a new target, ")
-        lbl_t_pre.pack(side="left")
-
-        link_copy_source = ttk.Label(t_line2_frame, text="copy the source model", foreground="blue", cursor="hand2")
-        link_copy_source.pack(side="left")
-        link_copy_source.bind("<Button-1>", lambda e: self.on_copy_source_model())
-
-        # Line 3: Location prompt
-        t_line3_frame = ttk.Frame(target_help_container)
-        t_line3_frame.pack(fill="x", anchor="w", pady=(0, 2))
-
-        lbl_t_loc = ttk.Label(t_line3_frame, text="You can find target models in:")
-        lbl_t_loc.pack(side="left")
-
-        # Line 4: Compact path display for target models with copy hyperlink
         target_path_str = str(get_target_models_dir())
-        t_path_frame = ttk.Frame(target_help_container)
-        t_path_frame.pack(fill="x", anchor="w", pady=(0, 2))
 
-        self.target_path_entry = ttk.Entry(t_path_frame, font=("Courier", 9))
-        self.target_path_entry.insert(0, target_path_str)
-        self.target_path_entry.configure(state="readonly")
-        self.target_path_entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
+        # 2. Directory path box immediately below dropdown
+        self.target_path_text = tk.Text(target_frame, height=3, font=("Courier", 12), wrap="char", relief="solid", bd=1)
+        self.target_path_text.insert("1.0", target_path_str)
+        self.target_path_text.configure(state="disabled", bg="#f0f0f0")
+        self.target_path_text.pack(fill="x", pady=(0, 0))
 
-        link_target_copy = ttk.Label(t_path_frame, text="[copy]", foreground="blue", cursor="hand2")
-        link_target_copy.pack(side="left")
-        link_target_copy.bind("<Button-1>", lambda e: self.copy_to_clipboard(target_path_str))
+        # 3. Left-justified links line underneath the path box
+        tgt_links_frame = ttk.Frame(target_frame)
+        tgt_links_frame.pack(fill="x", anchor="w", pady=(0, 0))
+        link_target_open = ttk.Label(tgt_links_frame, text="[open directory]", foreground="blue", cursor="hand2")
+        link_target_open.pack(side="right")
+        link_target_open.bind("<Button-1>", lambda e: self.open_directory(target_path_str))
 
-        # Line 5: Refresh instruction with refresh hyperlink
-        t_line5_frame = ttk.Frame(target_help_container)
-        t_line5_frame.pack(fill="x", anchor="w")
+        # 4. Copy Source Model button
+        copy_source_btn = ttk.Button(target_frame, text="Copy Source Model", command=self.on_copy_source_model)
+        copy_source_btn.pack(side="left")
 
-        lbl_t_suffix = ttk.Label(t_line5_frame, text="Then click ")
-        lbl_t_suffix.pack(side="left")
-
-        link_target_refresh = ttk.Label(t_line5_frame, text="refresh", foreground="blue", cursor="hand2")
-        link_target_refresh.pack(side="left")
-        link_target_refresh.bind("<Button-1>", lambda e: self.load_target_models())
-
-        lbl_t_end = ttk.Label(t_line5_frame, text=" to update.")
-        lbl_t_end.pack(side="left")
-
-        # --- PANEL 4 (Bottom-Left of Grid): Dataset ---
-        dataset_frame = ttk.LabelFrame(grid_frame, text="4. Dataset", padding=15)
+        # =========================================================================
+        # --- PANEL 3 (Bottom-Left of Grid): Dataset ---
+        # =========================================================================
+        dataset_frame = ttk.LabelFrame(grid_frame, text="3. Dataset", padding=15)
         dataset_frame.grid(row=1, column=0, sticky="nsew", padx=(0, 10), pady=(10, 0))
 
-        # Dropdown directly at the top
+        # 1. Dropdown at the top
         self.dataset_var = tk.StringVar()
         self.dataset_combo = ttk.Combobox(
             dataset_frame, 
             textvariable=self.dataset_var, 
             state="readonly"
         )
-        self.dataset_combo.pack(fill="x", anchor="w", pady=(0, 15))
+        self.dataset_combo.pack(fill="x", anchor="w", pady=(0, 18))
         self.dataset_combo.bind("<<ComboboxSelected>>", self.on_dataset_selected)
+        self.dataset_combo.bind("<Button-1>", lambda e: self.load_datasets())
 
-        # Informative helper text container below containing only the new empty dataset hyperlink
-        dataset_help_container = ttk.Frame(dataset_frame)
-        dataset_help_container.pack(fill="x", pady=(0, 0))
+        # 2. Directory path box immediately below dropdown
+        dataset_path_str = str(get_datasets_dir())
+        self.dataset_path_text = tk.Text(dataset_frame, height=3, font=("Courier", 12), wrap="char", relief="solid", bd=1)
+        self.dataset_path_text.insert("1.0", dataset_path_str)
+        self.dataset_path_text.configure(state="disabled", bg="#f0f0f0")
+        self.dataset_path_text.pack(fill="x", pady=(0, 0))
 
-        ds_line_frame = ttk.Frame(dataset_help_container)
-        ds_line_frame.pack(fill="x", anchor="w")
+        # 3. Left-justified links line underneath the path box
+        ds_links_frame = ttk.Frame(dataset_frame)
+        ds_links_frame.pack(fill="x", anchor="w", pady=(0, 0))
+        link_ds_open = ttk.Label(ds_links_frame, text="[open directory]", foreground="blue", cursor="hand2")
+        link_ds_open.pack(side="right")
+        link_ds_open.bind("<Button-1>", lambda e: self.open_directory(dataset_path_str))
 
-        link_new_dataset = ttk.Label(ds_line_frame, text="Generate a new empty dataset", foreground="blue", cursor="hand2")
-        link_new_dataset.pack(side="left")
-        link_new_dataset.bind("<Button-1>", lambda e: self.on_generate_empty_dataset())
+         # 4. Copy Source Model button
+        new_dataset_btn = ttk.Button(dataset_frame, text="Create New Dataset", command=self.on_generate_empty_dataset)
+        new_dataset_btn.pack(side="left")
 
-        # --- PANEL 5 (Bottom-Right of Grid): Chat Template ---
-        template_frame = ttk.LabelFrame(grid_frame, text="5. Chat Template", padding=15)
+        # =========================================================================
+        # --- PANEL 4 (Bottom-Right of Grid): Chat Template ---
+        # =========================================================================
+        template_frame = ttk.LabelFrame(grid_frame, text="4. Chat Template", padding=15)
         template_frame.grid(row=1, column=1, sticky="nsew", padx=(10, 0), pady=(10, 0))
 
-        # Dropdown directly at the top
+        # 1. Dropdown at the top
         self.template_var = tk.StringVar()
         self.template_combo = ttk.Combobox(
             template_frame, 
             textvariable=self.template_var, 
             state="readonly"
         )
-        self.template_combo.pack(fill="x", anchor="w", pady=(0, 15))
+        self.template_combo.pack(fill="x", anchor="w", pady=(0, 18))
         self.template_combo.bind("<<ComboboxSelected>>", self.on_template_selected)
+        self.template_combo.bind("<Button-1>", lambda e: self.load_templates())
 
-        # Informative helper text container below with model family reminder verbiage
+        template_path_str = str(get_templates_dir())
+
+        # 2. Directory path box immediately below dropdown
+        self.template_path_text = tk.Text(template_frame, height=3, font=("Courier", 12), wrap="char", relief="solid", bd=1)
+        self.template_path_text.insert("1.0", template_path_str)
+        self.template_path_text.configure(state="disabled", bg="#f0f0f0")
+        self.template_path_text.pack(fill="x", pady=(0, 0))
+
+        # 3. links line underneath the path box
+        tmpl_links_frame = ttk.Frame(template_frame)
+        tmpl_links_frame.pack(fill="x", anchor="w", pady=(0, 18))
+        link_tmpl_open = ttk.Label(tmpl_links_frame, text="[open directory]", foreground="blue", cursor="hand2")
+        link_tmpl_open.pack(side="right")
+        link_tmpl_open.bind("<Button-1>", lambda e: self.open_directory(template_path_str))
+
+        # 4. Informative helper text container
         template_help_container = ttk.Frame(template_frame)
         template_help_container.pack(fill="x", pady=(0, 0))
 
         tmpl_line_frame = ttk.Frame(template_help_container)
         tmpl_line_frame.pack(fill="x", anchor="w")
-
         lbl_tmpl_reminder = ttk.Label(
             tmpl_line_frame, 
-            text="Select a chat template to match the source model family.",
+            text="Note: Automatically selected to match source model."
+                 " Override here for advanced use cases only.",
             wraplength=350
         )
         lbl_tmpl_reminder.pack(side="left", anchor="w")
 
         # Initial population of all dropdowns
-        self.refresh_all_dropdowns()
+        self.load_source_models()
+        self.load_target_models()
+        self.load_datasets()
+        self.load_templates()
 
         # Pre-populate fields if values already exist in global state
         self.sync_ui_with_state()
 
-    def on_verify_mac(self):
-        """Placeholder hardware check action."""
-        messagebox.showinfo("Hardware Check", "Mac verified.", parent=self)
+    def on_download_starter_model(self):
+        messagebox.showinfo("downloading", "downloading")
 
     def on_copy_source_model(self):
-        """Prompt user for target model name and handle copying action."""
+        """Prompt user for target model name, copy source folder, handle collisions, and select it."""
         current_source = self.source_var.get()
-        suggested_name = f"{current_source}-target" if current_source else "new-target"
+        if not current_source:
+            messagebox.showinfo("No Source Model", "Please select a source model to copy first.", parent=self)
+            return
+        
+        suggested_name = f"{current_source}-MyModel"
         
         target_name = simpledialog.askstring(
             "Copy Source Model",
@@ -271,43 +219,59 @@ class SetupTab(ttk.Frame):
         )
         
         if target_name:
-            messagebox.showinfo("Copy Model", f"OK. Copying source model to target model: '{target_name}'", parent=self)
-            # Future implementation for actual copy mechanism goes here
+            source_dir = get_source_models_dir() / current_source
+            target_dir = get_target_models_dir() / target_name
+            
+            if target_dir.exists():
+                if not messagebox.askyesno("Target Exists", f"Target model '{target_name}' already exists. Do you want to replace it?", parent=self):
+                    return
+                shutil.rmtree(target_dir)
+                
+            try:
+                shutil.copytree(source_dir, target_dir)
+                self.load_target_models()
+                self.target_var.set(target_name)
+                set_property("target_model", target_name)
+                messagebox.showinfo("Success", f"Successfully copied source model to target '{target_name}'.", parent=self)
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to copy model:\n{e}", parent=self)
 
     def on_generate_empty_dataset(self):
-        """Prompt user for new dataset name, create empty dataset, refresh, and auto-select it."""
+        """Prompt user for new dataset name, handle collision checking, create initial record, and auto-select it."""
         dataset_name = simpledialog.askstring(
             "Generate Empty Dataset",
-            "Enter a name for the new dataset (e.g., custom_data.json):",
-            initialvalue="new_dataset.json",
+            "Enter a name for the new dataset:",
+            initialvalue="new_working_dataset.jsonl",
             parent=self
         )
         
         if dataset_name:
-            if not dataset_name.endswith(('.json', '.jsonl', '.txt')):
-                dataset_name += ".json"
+            if not dataset_name.endswith('.jsonl'):
+                dataset_name += ".jsonl"
 
-            # TODO: Add actual file creation logic in datasets directory here
+            file_path = get_datasets_dir() / dataset_name
             
-            # Refresh the dataset dropdown list automatically
-            self.load_datasets()
-            
-            # Automatically select the newly created dataset in the dropdown and state
-            self.dataset_var.set(dataset_name)
-            set_property("dataset", dataset_name)
+            if file_path.exists():
+                if not messagebox.askyesno("File Exists", f"Dataset '{dataset_name}' already exists. Do you want to replace it?", parent=self):
+                    return
 
-    def copy_to_clipboard(self, text):
-        """Copies the given text to the system clipboard."""
-        self.clipboard_clear()
-        self.clipboard_append(text)
-        messagebox.showinfo("Copied", "Directory path copied to clipboard.", parent=self)
+            try:
+                # Ensure parent directory exists and write initial record
+                file_path.parent.mkdir(parents=True, exist_ok=True)
+                initial_record = {"prompt": "Example prompt", "completion": "Example completion"}
+                with open(file_path, "w", encoding="utf-8") as f:
+                    f.write(json.dumps(initial_record) + "\n")
 
-    def refresh_all_dropdowns(self):
-        """Scans all storage directories and updates all four dropdown options at once."""
-        self.load_source_models()
-        self.load_target_models()
-        self.load_datasets()
-        self.load_templates()
+                self.load_datasets()
+                self.dataset_var.set(dataset_name)
+                set_property("dataset", dataset_name)
+                set_property("dataset_version", 0)
+                messagebox.showinfo("Success", f"Created new dataset '{dataset_name}'.", parent=self)
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to create dataset:\n{e}", parent=self)
+
+    def open_directory(self, path_str):
+        subprocess.run(["open", path_str])
 
     def load_source_models(self):
         """Scans the source models directory and updates dropdown options."""
@@ -365,6 +329,28 @@ class SetupTab(ttk.Frame):
         val = self.source_var.get()
         if val:
             set_property("source_model", val)
+            
+            # Automatically match the chat template based on the source model family
+            self.load_templates() # Refresh available templates first
+            available_templates = self.template_combo['values']
+            if available_templates:
+                source_lower = val.lower()
+                matched_template = None
+                
+                # Check for common keywords in model name to map to template files
+                for tmpl in available_templates:
+                    tmpl_lower = tmpl.lower()
+                    if any(keyword in source_lower and keyword in tmpl_lower for keyword in ["llama", "mistral", "gemma", "qwen", "phi"]):
+                        matched_template = tmpl
+                        break
+                
+                # Fallback if specific keyword match fails but templates exist
+                if not matched_template:
+                    matched_template = available_templates[0]
+                
+                if matched_template:
+                    self.template_var.set(matched_template)
+                    set_property("chat_template", matched_template)
 
     def on_target_selected(self, event):
         val = self.target_var.get()
@@ -375,6 +361,7 @@ class SetupTab(ttk.Frame):
         val = self.dataset_var.get()
         if val:
             set_property("dataset", val)
+            set_property("dataset_version", 0)
 
     def on_template_selected(self, event):
         val = self.template_var.get()

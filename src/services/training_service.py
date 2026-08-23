@@ -188,11 +188,7 @@ class TrainingService:
 
     def deploy_target_model(self):
         target_model = get_property("target_model")
-        custom_target = get_property("custom_target")
-        if custom_target:
-            target_path = Path(get_target_models_dir() / custom_target)
-        else:
-            target_path = Path(get_target_models_dir() / target_model)
+        target_path = Path(get_target_models_dir() / target_model)
 
         if self.get_quantized_model_path().exists():
             print(f"[INFO] Deploying quantized fused model from {self.get_quantized_model_path()} to {target_path}.")

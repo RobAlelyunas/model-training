@@ -20,16 +20,3 @@ def run_background(widget_context, task_func, ui_callback=None):
             print(f"[Background Task Error] {e}")
 
     threading.Thread(target=worker, daemon=True).start()
-
-
-def ensure_setup_complete() -> bool:
-    """
-    Checks if all mandatory setup items are configured.
-    """
-    source_model = get_property("source_model")
-    target_model = get_property("target_model")
-    dataset = get_property("dataset")
-    chat_template = get_property("chat_template")
-    
-    # Check if all required properties are present and non-empty
-    return source_model and target_model and dataset and chat_template

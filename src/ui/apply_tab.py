@@ -77,21 +77,6 @@ class ApplyTab(ttk.Frame):
         )
         self.cancel_button.pack(side="left", padx=2)
 
-        # Custom Target Model Options Frame
-        custom_frame = ttk.Frame(self)
-        custom_frame.pack(fill="x", padx=15, pady=5)
-
-        self.deploy_custom_target = tk.BooleanVar(value=False)
-        self.custom_target_checkbox = ttk.Checkbutton(
-            custom_frame,
-            text="Deploy with a custom target model name",
-            variable=self.deploy_custom_target
-        )
-        self.custom_target_checkbox.pack(side="left", padx=5)
-
-        self.custom_target_entry = ttk.Entry(custom_frame, width=20, state=tk.NORMAL)
-        self.custom_target_entry.pack(side="left", padx=5)
-
         # Hyperparameters Frame (Learning Rate & Iterations)
         params_frame = ttk.Frame(self)
         params_frame.pack(fill="x", padx=15, pady=5)
@@ -157,12 +142,6 @@ class ApplyTab(ttk.Frame):
         self.start_button.config(state=tk.DISABLED)
         self.cancel_button.config(state=tk.NORMAL)
         self.text_box.delete("1.0", tk.END)
-
-        # Handle custom target model property update if checked
-        if self.deploy_custom_target.get():
-            set_property("custom_target", self.custom_target_entry.get().strip())
-        else:
-            set_property("custom_target", None)
         
         # Redirect standard output so all print statements stream directly into the text box
         self.original_stdout = sys.stdout
@@ -190,7 +169,7 @@ class ApplyTab(ttk.Frame):
             self.cancel_button.config(state=tk.DISABLED)
 
             self.status_label.config(text="Finishing: setting target model and loading inference model...")
-            target_model = get_property("custom_target") or get_property("target_model")
+            target_model = get_property("target_model")
             self.text_box.insert(tk.END, f"\n=== POST-PIPELINE: Set Target Model to '{target_model}' ===\n", "pipeline_tag")
             set_property("target_model", target_model)
             try:

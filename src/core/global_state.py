@@ -6,10 +6,14 @@ from pathlib import Path
 _state = {}
 _state_change_handlers = []
 
+def get_config_path():
+    """Helper to get the full path to properties.json."""
+    return get_properties_dir() / "properties.json"
+
 def initialize_state():
     global _state
     # 1. read global state from the properties.json file first
-    CONFIG_PATH = get_properties_dir() / "properties.json"
+    CONFIG_PATH = get_config_path()
     if not CONFIG_PATH.exists():
         raise FileNotFoundError(f"Properties file not found at {CONFIG_PATH}")
 
@@ -33,11 +37,18 @@ def initialize_state():
         else:
             i += 1
 
-    # 3. set additional global state as needed
-    _state["dataset_version"] = 0
-    _state["custom_target"] = None
-
     print(f"[Global State] Initialized with properties: {_state}")
+
+def save_state_to_file():
+    """Writes the current global state dictionary back out to properties.json."""
+    global _state
+    try:
+        config_path = get_config_path()
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(config_path, "w", encoding="utf-8") as f:
+            json.dump(_state, f, indent=4)
+    except Exception as e:
+        print(f"[State Error] Failed to write state to properties.json: {e}")
 
 def register_state_change_handler(handler):
     """Registers a parameterless callback function to be called on global state changes."""
@@ -53,10 +64,11 @@ def get_property(key: str):
     return _state[key]
 
 def set_property(key: str, value):
-    """Dynamically set or override a property value at runtime."""
+    """Dynamically set or override a property value at runtime and persist it to disk."""
     global _state
     _state[key] = value
     print(f"[Set Property] Property '{key}' set to: {value}")
+    save_state_to_file()   
     notify_global_state_change()
 
 def notify_global_state_change():
@@ -67,5 +79,3 @@ def notify_global_state_change():
             handler()
         except Exception as e:
             print(f"[State Error] Error executing state change handler: {e}")
-
-
