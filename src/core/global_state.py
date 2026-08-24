@@ -1,26 +1,23 @@
-from src.core.storage import get_properties_dir
+from src.core.storage import get_properties_path
+from src.core.logging import log
 import json
 import sys
-from pathlib import Path
+
 
 _state = {}
 _state_change_handlers = []
 
-def get_config_path():
-    """Helper to get the full path to properties.json."""
-    return get_properties_dir() / "properties.json"
-
 def initialize_state():
     global _state
     # 1. read global state from the properties.json file first
-    CONFIG_PATH = get_config_path()
+    CONFIG_PATH = get_properties_path()
     if not CONFIG_PATH.exists():
         raise FileNotFoundError(f"Properties file not found at {CONFIG_PATH}")
 
     with open(CONFIG_PATH, "r", encoding="utf-8") as f:
         _state = json.load(f)
 
-    # parse any command line arguments
+    # 2. parse any command line arguments
     args = sys.argv[1:]
     i = 0
     while i < len(args):
@@ -37,18 +34,16 @@ def initialize_state():
         else:
             i += 1
 
-    print(f"[Global State] Initialized with properties: {_state}")
+    log("Global State", f"Initialized with properties: {_state}")
 
 def save_state_to_file():
     """Writes the current global state dictionary back out to properties.json."""
     global _state
     try:
-        config_path = get_config_path()
-        config_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(config_path, "w", encoding="utf-8") as f:
+        with open(get_properties_path(), "w", encoding="utf-8") as f:
             json.dump(_state, f, indent=4)
     except Exception as e:
-        print(f"[State Error] Failed to write state to properties.json: {e}")
+        log("State Error",f"Failed to write state to properties.json: {e}")
 
 def register_state_change_handler(handler):
     """Registers a parameterless callback function to be called on global state changes."""
@@ -67,7 +62,7 @@ def set_property(key: str, value):
     """Dynamically set or override a property value at runtime and persist it to disk."""
     global _state
     _state[key] = value
-    print(f"[Set Property] Property '{key}' set to: {value}")
+    log("Set Property", f"Property '{key}' set to: {value}")
     save_state_to_file()   
     notify_global_state_change()
 
@@ -78,4 +73,4 @@ def notify_global_state_change():
         try:
             handler()
         except Exception as e:
-            print(f"[State Error] Error executing state change handler: {e}")
+            log("State Error", f"Error executing state change handler: {e}")

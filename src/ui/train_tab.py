@@ -4,12 +4,14 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 from pathlib import Path
 from src.core.global_state import get_property
+from src.core.logging import log
 from src.services.inference_engine import inference_engine
 from src.ui.ui_helpers import run_background
 from src.ui.ui_theme import create_styled_text
 from src.core.global_state import register_state_change_handler
 from src.core.global_state import set_property
 from src.core.storage import get_datasets_dir, get_references_dir, get_target_models_dir
+from src.core.logging import log
 
 class TrainTab(ttk.Frame):
     def __init__(self, parent):
@@ -35,6 +37,10 @@ class TrainTab(ttk.Frame):
             current_chat_prop = bool(get_property("use_chat_template"))
             if self.use_chat_var.get() != current_chat_prop:
                 self.use_chat_var.set(current_chat_prop)
+
+        # Refresh the chat template widget visibility based on model capability
+        if hasattr(self, "refresh_chat_template_widget"):
+            self.refresh_chat_template_widget()
 
     def create_widgets(self):
         # Main container
@@ -87,16 +93,12 @@ class TrainTab(ttk.Frame):
         response_btn_subframe = ttk.Frame(response_header_frame)
         response_btn_subframe.pack(side="right")
 
-        # Use Chat Template Checkbox (placed alongside generate and add buttons)
-        initial_chat_setting = bool(get_property("use_chat_template"))
-        self.use_chat_var = tk.BooleanVar(value=initial_chat_setting)
-        self.use_chat_checkbox = ttk.Checkbutton(
-            response_btn_subframe, 
-            text="Use Chat Template", 
-            variable=self.use_chat_var, 
-            command=self.on_chat_template_toggled
-        )
-        self.use_chat_checkbox.pack(side="left", padx=(0, 10))
+        # Container frame for either the Checkbutton or the No-Template label
+        self.chat_widget_container = ttk.Frame(response_btn_subframe)
+        self.chat_widget_container.pack(side="left", padx=(0, 10))
+        
+        # Build the dynamic chat widget item
+        self.refresh_chat_template_widget()
 
         self.generate_button = ttk.Button(
             response_btn_subframe, text="Generate Answer", command=self.on_generate_clicked
@@ -114,6 +116,30 @@ class TrainTab(ttk.Frame):
         response_scroll = ttk.Scrollbar(response_tab, orient="vertical", command=self.response_text.yview)
         response_scroll.grid(row=1, column=1, sticky="ns", pady=(0, 5))
         self.response_text.configure(yscrollcommand=response_scroll.set)
+
+    def refresh_chat_template_widget(self):
+        """Conditionally renders the chat template checkbox or a 'No chat template' label without modifying state."""
+        for widget in self.chat_widget_container.winfo_children():
+            widget.destroy()
+ 
+        if inference_engine.has_chat_template():
+            initial_chat_setting = bool(get_property("use_chat_template"))
+            self.use_chat_var = tk.BooleanVar(value=initial_chat_setting)
+            self.use_chat_checkbox = ttk.Checkbutton(
+                self.chat_widget_container, 
+                text="Use Chat Template", 
+                variable=self.use_chat_var, 
+                command=self.on_chat_template_toggled
+            )
+            self.use_chat_checkbox.pack(side="left")
+        else:
+            # Fallback label indicator when no chat template exists for the model
+            no_template_label = ttk.Label(
+                self.chat_widget_container, 
+                text="(No chat template)", 
+                foreground="gray"
+            )
+            no_template_label.pack(side="left")
 
     def on_chat_template_toggled(self):
         """Updates the global state property when the chat template checkbox changes."""
@@ -179,13 +205,10 @@ class TrainTab(ttk.Frame):
             self.response_text.insert("1.0", self.current_response)
 
         except Exception as e:
-            print(f"Inference error: {e}")
+            log("Inference Error",f"{e}")
             self.current_response = f"[Error during generation: {e}]"
             self.response_text.delete("1.0", "end")
             self.response_text.insert("1.0", self.current_response)
-
-
-
 
     def on_add_clicked(self):
         """Saves the prompt and whatever answer is currently in the response box to the dataset."""
@@ -209,7 +232,7 @@ class TrainTab(ttk.Frame):
             self.working_dataset_path.parent.mkdir(parents=True, exist_ok=True)
             with open(self.working_dataset_path, "a", encoding="utf-8") as f:
                 f.write(json.dumps(record, ensure_ascii=False) + "\n")
-            print(f"Successfully added curated record to {self.working_dataset_path}")
+            log("Add Training Record", f"Successfully added curated record to {self.working_dataset_path}")
             set_property("dataset_version", get_property("dataset_version") + 1)
         except Exception as e:
             messagebox.showerror("Error", f"Failed to append record to dataset:\n{e}")

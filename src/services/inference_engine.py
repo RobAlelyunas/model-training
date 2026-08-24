@@ -2,12 +2,14 @@ from mlx_lm import load, generate
 from mlx_lm.sample_utils import make_sampler
 from src.core.global_state import get_property, register_state_change_handler
 from src.core.storage import get_target_models_dir
+from src.core.logging import log
 
 class InferenceEngine:
     def __init__(self):
         self.model = None
         self.tokenizer = None
         self.target_model = get_property('target_model')
+        self.load_model()
         register_state_change_handler(self.global_state_change)
 
     def global_state_change(self):
@@ -23,7 +25,7 @@ class InferenceEngine:
         if self.is_model_loaded():
             self.unload_model()  # Unload the current model before loading a new one
         self.model, self.tokenizer, *_ = load(model_path)
-        print(f"Loaded MLX model from {model_path}...")
+        log("InferenceEngine", f"Loaded MLX model from {model_path}...")
 
     def unload_model(self):
         """Unloads the model and forces garbage collection to free up memory."""
@@ -39,9 +41,9 @@ class InferenceEngine:
             import mlx.core as mx
             mx.clear_cache()
                 
-            print("[InferenceEngine] Model unloaded to free memory.")
+            log("InferenceEngine", "Model unloaded to free memory.")
         else:
-            print("[InferenceEngine] No model currently loaded.")
+            log("InferenceEngine", "No model currently loaded.")
 
     def is_model_loaded(self) -> bool:
         return self.model is not None and self.tokenizer is not None
@@ -66,6 +68,9 @@ class InferenceEngine:
             verbose=False
         ).strip()
 
+    def has_chat_template(self):
+        return self.tokenizer and hasattr(self.tokenizer, "apply_chat_template") and self.tokenizer.chat_template
+
     def generate_chat_response(self, prompt: str) -> str:
         """Formats the prompt using the chat template and delegates to generate_raw_response."""
         if not self.model or not self.tokenizer:
@@ -82,7 +87,7 @@ class InferenceEngine:
         else:
             formatted_prompt = prompt
 
-        print(f"Formatted chat prompt sent to MLX model:\n{formatted_prompt}")
+        log("InferenceEngine", f"Formatted chat prompt sent to MLX model:\n{formatted_prompt}")
         
         # Delegate directly to the single point of entry
         return self.generate_raw_response(formatted_prompt)

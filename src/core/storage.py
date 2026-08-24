@@ -1,3 +1,4 @@
+from src.core.logging import log
 from pathlib import Path
 import shutil
 import sys
@@ -26,15 +27,18 @@ def initialize_app_storage(first_run: bool = True):
         shutil.copytree(source_assets / "datasets", get_datasets_dir(), dirs_exist_ok=True)
         shutil.copytree(source_assets / "references", get_references_dir(), dirs_exist_ok=True)
 
-        print("[Bootstrap] Default assets copied successfully for the first run.")
+        log("Bootstrap", "Default assets copied successfully for the first run.")
 
-    print(f"[Bootstrap] Initialize app storage complete")
+    log("Bootstrap", "Initialize app storage complete")
 
 def get_templates_dir() -> Path:
     return get_app_storage_dir() / "templates"
 
 def get_properties_dir() -> Path:
     return get_app_storage_dir() / "properties"
+
+def get_properties_path() -> Path:
+    return get_properties_dir() / "properties.json"
 
 def get_datasets_dir() -> Path:
     return get_app_storage_dir() / "datasets"

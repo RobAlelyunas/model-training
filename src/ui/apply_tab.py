@@ -12,6 +12,7 @@ from src.ui.ui_theme import (
 )
 from src.core.global_state import get_property, register_state_change_handler, set_property
 from src.ui.ui_helpers import run_background
+from src.core.logging import log
 
 
 class StdoutRedirector:
@@ -109,7 +110,7 @@ class ApplyTab(ttk.Frame):
         self.iters_var = tk.StringVar(value=default_iters)
         self.iters_entry = ttk.Entry(row0_frame, textvariable=self.iters_var, width=6, style="RightEntry.TEntry")
         self.iters_entry.pack(side="left", padx=(0, 15))
-        self.iters_entry.bind("<FocusOut>", lambda e: self.save_hyperparameters())
+        self.iters_entry.bind("<FocusOut>", lambda e: self.validate_and_save_int("lora_iters", self.iters_var, "Iterations"))
 
         # 2. Batch Size
         ttk.Label(row0_frame, text="Batch Size:").pack(side="left", padx=(0, 2))
@@ -120,7 +121,7 @@ class ApplyTab(ttk.Frame):
         self.batch_var = tk.StringVar(value=default_batch)
         self.batch_entry = ttk.Entry(row0_frame, textvariable=self.batch_var, width=5, style="RightEntry.TEntry")
         self.batch_entry.pack(side="left", padx=(0, 15))
-        self.batch_entry.bind("<FocusOut>", lambda e: self.save_hyperparameters())
+        self.batch_entry.bind("<FocusOut>", lambda e: self.validate_and_save_int("lora_batch_size", self.batch_var, "Batch Size"))
 
         # 3. Layers
         ttk.Label(row0_frame, text="Layers:").pack(side="left", padx=(0, 2))
@@ -131,7 +132,7 @@ class ApplyTab(ttk.Frame):
         self.layers_var = tk.StringVar(value=default_layers)
         self.layers_entry = ttk.Entry(row0_frame, textvariable=self.layers_var, width=5, style="RightEntry.TEntry")
         self.layers_entry.pack(side="left", padx=(0, 15))
-        self.layers_entry.bind("<FocusOut>", lambda e: self.save_hyperparameters())
+        self.layers_entry.bind("<FocusOut>", lambda e: self.validate_and_save_int("lora_num_layers", self.layers_var, "Layers"))
 
         # 4. Learning Rate
         ttk.Label(row0_frame, text="Learning Rate:").pack(side="left", padx=(0, 2))
@@ -142,7 +143,7 @@ class ApplyTab(ttk.Frame):
         self.lr_var = tk.StringVar(value=default_lr)
         self.lr_entry = ttk.Entry(row0_frame, textvariable=self.lr_var, width=10, style="RightEntry.TEntry")
         self.lr_entry.pack(side="left", padx=(0, 10))
-        self.lr_entry.bind("<FocusOut>", lambda e: self.save_hyperparameters())
+        self.lr_entry.bind("<FocusOut>", lambda e: self.validate_and_save_float("lora_learning_rate", self.lr_var, "Learning Rate"))
 
 
         # Row 1: Quantization Settings (Checkbox and Quant Bits)
@@ -172,7 +173,7 @@ class ApplyTab(ttk.Frame):
         self.qbits_var = tk.StringVar(value=default_qbits)
         self.qbits_entry = ttk.Entry(row1_frame, textvariable=self.qbits_var, width=5, style="RightEntry.TEntry")
         self.qbits_entry.pack(side="left", padx=(0, 10))
-        self.qbits_entry.bind("<FocusOut>", lambda e: self.save_hyperparameters())
+        self.qbits_entry.bind("<FocusOut>", lambda e: self.validate_and_save_int("quantization_bits", self.qbits_var, "Quant Bits"))
 
         # Center Frame: Real-time Log Streaming Window
         log_frame = ttk.LabelFrame(self, text="Execution Logs")
@@ -202,53 +203,74 @@ class ApplyTab(ttk.Frame):
             "TODO: Automatically calculate optimal parameters based on available RAM, source model size, and dataset record count.",
             parent=self
         )
+
+    def validate_and_save_int(self, prop_name, var, field_label):
+        """Validates that an entry is a positive integer or zero, updating global state or reverting."""
+        val_str = var.get().strip()
+        try:
+            val_int = int(val_str)
+            if val_int < 0:
+                raise ValueError("Must be non-negative")
+            set_property(prop_name, val_int)
+        except (ValueError, TypeError):
+            messagebox.showerror(
+                "Invalid Input",
+                f"Please enter a valid positive integer for {field_label}.",
+                parent=self
+            )
+            # Revert to last known valid property value
+            try:
+                var.set(str(get_property(prop_name)))
+            except KeyError:
+                var.set("0")
+
+    def validate_and_save_float(self, prop_name, var, field_label):
+        """Validates that an entry is a valid floating point number (including scientific notation), updating state or reverting."""
+        val_str = var.get().strip()
+        try:
+            val_float = float(val_str)
+            set_property(prop_name, val_str)  # Keep string representation (e.g. "2e-05") or float depending on preference
+        except (ValueError, TypeError):
+            messagebox.showerror(
+                "Invalid Input",
+                f"Please enter a valid floating-point number for {field_label} (e.g., 2e-05 or 0.0001).",
+                parent=self
+            )
+            # Revert to last known valid property value
+            try:
+                var.set(str(get_property(prop_name)))
+            except KeyError:
+                var.set("2e-05")
  
     def save_hyperparameters(self):
-        """Saves current values from entry fields and checkboxes to global state."""
-        lr_val = self.lr_var.get().strip()
-        if lr_val:
-            set_property("lora_learning_rate", lr_val)
-
-        iters_val = self.iters_var.get().strip()
-        if iters_val:
-            try:
-                set_property("lora_iters", int(iters_val))
-            except ValueError:
-                set_property("lora_iters", iters_val)
-
-        batch_val = self.batch_var.get().strip()
-        if batch_val:
-            try:
-                set_property("lora_batch_size", int(batch_val))
-            except ValueError:
-                set_property("lora_batch_size", batch_val)
-
-        layers_val = self.layers_var.get().strip()
-        if layers_val:
-            try:
-                set_property("lora_num_layers", int(layers_val))
-            except ValueError:
-                set_property("lora_num_layers", layers_val)
-
+        """Saves current values from checkboxes to global state."""
         set_property("perform_quantization", self.quant_var.get())
-
-        qbits_val = self.qbits_var.get().strip()
-        if qbits_val:
-            try:
-                set_property("quantization_bits", int(qbits_val))
-            except ValueError:
-                set_property("quantization_bits", qbits_val)
 
     def start_workflow(self):
         """Kicks off the complete workflow lifecycle cleanly using the background helper."""
-        # Ensure any pending text modifications are saved immediately on start
+        # Ensure checkbox state is saved
         self.save_hyperparameters()
+
+        # Log summary statement BEFORE standard out gets redirected to the text window
+        dataset_path = get_property("dataset")
+        source_model_path = get_property("source_model")
+        iters = get_property("lora_iters")
+        batch_size = get_property("lora_batch_size")
+        num_layers = get_property("lora_num_layers")
+        learning_rate = get_property("lora_learning_rate")
+        
+        log(
+            "ApplyTab",
+            f"Applying dataset '{dataset_path}' to source model '{source_model_path}' "
+            f"with hyperparameters: iters={iters}, batch_size={batch_size}, "
+            f"num_layers={num_layers}, learning_rate={learning_rate}"
+        )
 
         self.start_button.config(state=tk.DISABLED)
         self.cancel_button.config(state=tk.NORMAL)
         self.text_box.delete("1.0", tk.END)
         
-        # Redirect standard output so all print statements stream directly into the text box
+        # Redirect standard output so all log statements stream directly into the text box
         self.original_stdout = sys.stdout
         sys.stdout = StdoutRedirector(self.text_box)
 
@@ -260,15 +282,28 @@ class ApplyTab(ttk.Frame):
         self.status_label.config(text="Running training pipeline...")
         self.text_box.insert(tk.END, "=== STARTING TRAINING PIPELINE ===\n", "pipeline_tag")
 
+        # Track pipeline health for post-execution logging
+        pipeline_succeeded = [True]
+
         # Define background task (now completely synchronous and blocking)
         def background_pipeline_task():
-            training_service.apply_pipeline()
+            try:
+                training_service.apply_pipeline()
+            except Exception as e:
+                pipeline_succeeded[0] = False
+                raise e
             return True
 
         # Define UI cleanup callback when background execution finishes
         def on_pipeline_complete(success):
             if self.original_stdout:
                 sys.stdout = self.original_stdout
+
+            # Log completion or error status via log() now that stdout redirection is undone
+            if pipeline_succeeded[0] and success:
+                log("ApplyTab", "Successfully trained model workflow completed.")
+            else:
+                log("ApplyTab", "Model training exited with error or failed.")
 
             self.start_button.config(state=tk.NORMAL)
             self.cancel_button.config(state=tk.DISABLED)

@@ -1,7 +1,6 @@
 import tkinter as tk
 from tkinter import messagebox, simpledialog, ttk
 import subprocess
-import platform
 import shutil
 import json
 from src.core.storage import (
@@ -9,8 +8,10 @@ from src.core.storage import (
     get_target_models_dir,
     get_datasets_dir,
     get_templates_dir,
+    get_logs_dir,
 )
 from src.core.global_state import set_property, get_property
+from src.core.logging import log
 
 class SetupTab(ttk.Frame):
     def __init__(self, parent):
@@ -30,8 +31,9 @@ class SetupTab(ttk.Frame):
         )
         title_label.pack(side="left", anchor="w")
 
+        # Main grid container for the 4 panels
         grid_frame = ttk.Frame(content_frame)
-        grid_frame.pack(expand=True, fill="both")
+        grid_frame.pack(expand=True, fill="both", pady=(0, 10))
 
         grid_frame.columnconfigure(0, weight=1, uniform="col")
         grid_frame.columnconfigure(1, weight=1, uniform="col")
@@ -140,7 +142,7 @@ class SetupTab(ttk.Frame):
         link_ds_open.pack(side="right")
         link_ds_open.bind("<Button-1>", lambda e: self.open_directory(dataset_path_str))
 
-         # 4. Copy Source Model button
+         # 4. Create New Dataset button
         new_dataset_btn = ttk.Button(dataset_frame, text="Create New Dataset", command=self.on_generate_empty_dataset)
         new_dataset_btn.pack(side="left")
 
@@ -151,7 +153,7 @@ class SetupTab(ttk.Frame):
         template_frame.grid(row=1, column=1, sticky="nsew", padx=(10, 0), pady=(10, 0))
 
         # 1. Dropdown at the top
-        self.template_var = tk.StringVar()
+        self.template_var = tk.StringVar(value="None")
         self.template_combo = ttk.Combobox(
             template_frame, 
             textvariable=self.template_var, 
@@ -190,11 +192,35 @@ class SetupTab(ttk.Frame):
         )
         lbl_tmpl_reminder.pack(side="left", anchor="w")
 
+        # =========================================================================
+        # --- COMPACT BOTTOM BAR: Logs Directory Path & Link ---
+        # =========================================================================
+        logs_bar_frame = ttk.Frame(content_frame)
+        logs_bar_frame.pack(fill="x", pady=(10, 0))
+        logs_bar_frame.columnconfigure(0, weight=1)
+
+        logs_path_str = str(get_logs_dir())
+
+        # Hyperlink on the right side
+        link_logs_open = ttk.Label(logs_bar_frame, text="[open directory]", foreground="blue", cursor="hand2")
+        link_logs_open.pack(side="right", padx=(10, 0))
+        link_logs_open.bind("<Button-1>", lambda e: self.open_directory(logs_path_str))
+
+        # Narrow single-line copyable text box for the path
+        self.logs_path_text = tk.Text(logs_bar_frame, height=1, font=("Courier", 11), wrap="none", relief="solid", bd=1)
+        self.logs_path_text.insert("1.0", logs_path_str)
+        self.logs_path_text.configure(state="disabled", bg="#f0f0f0")
+        self.logs_path_text.pack(side="left", fill="x", expand=True)
+
         # Initial population of all dropdowns
         self.load_source_models()
         self.load_target_models()
         self.load_datasets()
         self.load_templates()
+
+        # Set default state property if not already set
+        if not get_property("chat_template"):
+            set_property("chat_template", "None")
 
         # Pre-populate fields if values already exist in global state
         self.sync_ui_with_state()
@@ -203,7 +229,7 @@ class SetupTab(ttk.Frame):
         messagebox.showinfo("downloading", "downloading")
 
     def on_copy_source_model(self):
-        """Prompt user for target model name, copy source folder, handle collisions, and select it."""
+        """Prompt user for target model name, copy source folder, handle collisions, copy template if set, and select it."""
         current_source = self.source_var.get()
         if not current_source:
             messagebox.showinfo("No Source Model", "Please select a source model to copy first.", parent=self)
@@ -228,12 +254,29 @@ class SetupTab(ttk.Frame):
                 shutil.rmtree(target_dir)
                 
             try:
+                # 1. Copy source model directory to target directory
                 shutil.copytree(source_dir, target_dir)
+                log("Setup", f"Successfully copied source model '{current_source}' to target '{target_name}'.")
+
+                # 2. Check if a valid chat template is selected (ignoring explicit "None")
+                selected_template = get_property("chat_template")
+                if selected_template and selected_template != "None":
+                    template_source_path = get_templates_dir() / selected_template
+                    if template_source_path.exists():
+                        template_target_path = target_dir / "chat_template.jinja"
+                        shutil.copy(template_source_path, template_target_path)
+                        log("Setup", f"Copied selected chat template '{selected_template}' to target root as 'chat_template.jinja'.")
+                    else:
+                        log("Setup", f"Warning: Selected chat template file '{selected_template}' not found at {template_source_path}.")
+                else:
+                    log("Setup", "No chat template selected ('None'); skipping chat_template.jinja copy.")
+
                 self.load_target_models()
                 self.target_var.set(target_name)
                 set_property("target_model", target_name)
                 messagebox.showinfo("Success", f"Successfully copied source model to target '{target_name}'.", parent=self)
             except Exception as e:
+                log("Setup", f"Error copying source model or template: {e}")
                 messagebox.showerror("Error", f"Failed to copy model:\n{e}", parent=self)
 
     def on_generate_empty_dataset(self):
@@ -283,7 +326,7 @@ class SetupTab(ttk.Frame):
             else:
                 self.source_combo['values'] = []
         except Exception as e:
-            print(f"[Setup] Error loading source models: {e}")
+            log("Setup", f"Error loading source models: {e}")
             self.source_combo['values'] = []
 
     def load_target_models(self):
@@ -296,7 +339,7 @@ class SetupTab(ttk.Frame):
             else:
                 self.target_combo['values'] = []
         except Exception as e:
-            print(f"[Setup] Error loading target models: {e}")
+            log("Setup", f"Error loading target models: {e}")
             self.target_combo['values'] = []
 
     def load_datasets(self):
@@ -309,21 +352,24 @@ class SetupTab(ttk.Frame):
             else:
                 self.dataset_combo['values'] = []
         except Exception as e:
-            print(f"[Setup] Error loading datasets: {e}")
+            log("Setup", f"Error loading datasets: {e}")
             self.dataset_combo['values'] = []
 
     def load_templates(self):
-        """Scans the templates directory and updates dropdown options."""
+        """Scans the templates directory for .jinja files and updates dropdown options with 'None' prepended."""
         try:
             template_dir = get_templates_dir()
             if template_dir.exists() and template_dir.is_dir():
-                files = [item.name for item in template_dir.iterdir() if item.is_file()]
-                self.template_combo['values'] = sorted(files)
+                files = [
+                    item.name for item in template_dir.iterdir() 
+                    if item.is_file() and item.name.lower().endswith(".jinja")
+                ]
+                self.template_combo['values'] = ["None"] + sorted(files)
             else:
-                self.template_combo['values'] = []
+                self.template_combo['values'] = ["None"]
         except Exception as e:
-            print(f"[Setup] Error loading templates: {e}")
-            self.template_combo['values'] = []
+            log("Setup", f"Error loading templates: {e}")
+            self.template_combo['values'] = ["None"]
 
     def on_source_selected(self, event):
         val = self.source_var.get()
@@ -337,16 +383,18 @@ class SetupTab(ttk.Frame):
                 source_lower = val.lower()
                 matched_template = None
                 
-                # Check for common keywords in model name to map to template files
+                # Check for common keywords in model name to map to template files (excluding "None")
                 for tmpl in available_templates:
+                    if tmpl == "None":
+                        continue
                     tmpl_lower = tmpl.lower()
                     if any(keyword in source_lower and keyword in tmpl_lower for keyword in ["llama", "mistral", "gemma", "qwen", "phi"]):
                         matched_template = tmpl
                         break
                 
-                # Fallback if specific keyword match fails but templates exist
-                if not matched_template:
-                    matched_template = available_templates[0]
+                # Fallback to first actual template if keyword match fails
+                if not matched_template and len(available_templates) > 1:
+                    matched_template = available_templates[1]
                 
                 if matched_template:
                     self.template_var.set(matched_template)

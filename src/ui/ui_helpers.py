@@ -1,5 +1,5 @@
 import threading
-from src.core.global_state import get_property
+from src.core.logging import log
 
 def run_background(widget_context, task_func, ui_callback=None):
     """Runs a function in a background thread, using a Tkinter widget context
@@ -17,6 +17,6 @@ def run_background(widget_context, task_func, ui_callback=None):
             else:
                 widget_context.after(0, callback)
         except Exception as e:
-            print(f"[Background Task Error] {e}")
+            log("Background Task Error", f"{e}")
 
     threading.Thread(target=worker, daemon=True).start()

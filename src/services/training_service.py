@@ -7,6 +7,7 @@ import subprocess
 from jinja2 import Template
 from src.core.global_state import get_property, register_state_change_handler
 from src.core.storage import get_datasets_dir, get_source_models_dir, get_templates_dir, get_generated_dir, get_target_models_dir
+from src.core.logging import log
 
 
 class TrainingService:
@@ -20,7 +21,7 @@ class TrainingService:
 
     def _run_cmd(self, cmd: str):
         """Helper to run a shell command synchronously, streaming stdout live to sys.stdout."""
-        print(f"\n[TrainingService] Running command: {cmd}")
+        log("TrainingService", f"Running command: {cmd}")
         
         process = subprocess.Popen(
             cmd,
@@ -58,70 +59,77 @@ class TrainingService:
         generated_dir = get_generated_dir()
         if generated_dir.exists() and generated_dir.is_dir():
             shutil.rmtree(generated_dir)
-            print(f"Successfully deleted {generated_dir} and all its contents.")
+            log("TrainingService", f"Successfully deleted {generated_dir} and all its contents.")
         else:
-            print(f"Directory {generated_dir} does not exist.")
+            log("TrainingService", f"Directory {generated_dir} does not exist.")
         get_generated_dir().mkdir(parents=True, exist_ok=True)
 
+    def _format_record(self, record: dict, chat_template = None) -> str:
+        """Converts a single record into text using either the chat template or a clean default format."""
+        prompt = record.get("prompt", "")
+        completion = record.get("completion", "")
+
+        if not chat_template:
+            return f"{prompt} {completion}"
+        else:
+            # Use the Jinja chat template
+            conversation_messages = [
+                {"role": "user", "content": prompt},
+                {"role": "assistant", "content": completion}
+            ]
+            return chat_template.render(
+                messages=conversation_messages, 
+                add_generation_prompt=False
+            )
+
     def prepare_data_dir(self):
-        # 1. Clear the generated/data directory if it exists, then recreate it
+
+        # 1. Clear and recreate the generated/data directory
         out_dir = self.get_data_dir()
         if out_dir.exists() and out_dir.is_dir():
             shutil.rmtree(out_dir)
-            print(f"Successfully deleted {out_dir} and all its contents.")
+            log("TrainingService", f"Successfully deleted {out_dir} and all its contents.")
         else:
-            print(f"Directory {out_dir} does not exist.")
+            log("TrainingService", f"Directory {out_dir} does not exist.")
         out_dir.mkdir(parents=True, exist_ok=True)
 
-        # 2. Load the chat template 
-        chat_template_path = get_templates_dir() / get_property("chat_template")
-        if not chat_template_path.exists():
-            raise FileNotFoundError(f"Chat template not found at {chat_template_path}. Please ensure it exists.")
-        with open(chat_template_path, "r", encoding="utf-8") as f:
-            chat_template_content = f.read()
-        chat_template = Template(chat_template_content)
+        # 2. Resolve the chat template
+        chat_template = None
+        template_prop = get_property("chat_template")
+        if template_prop and template_prop != "None":
+            chat_template_path = get_templates_dir() / template_prop
+            if not chat_template_path.exists():
+                raise FileNotFoundError(f"Chat template not found at {chat_template_path}. Please ensure it exists.")
+            with open(chat_template_path, "r", encoding="utf-8") as f:
+                chat_template = Template(f.read())
 
-        #3. format the dataset as an array of messages for the chat template
+        # 3. Locate the input dataset
         in_file = get_datasets_dir() / get_property("dataset")
         if not in_file.exists():
             raise FileNotFoundError(f"Could not find input dataset at {in_file}") 
+        log("TrainingService", f"Processing dataset from {in_file}")
 
-        print(f"Processing dataset from {in_file}")
-
-        messages = []
-        with open(in_file, "r", encoding="utf-8") as fin:
+        # 4. Stream line-by-line, convert, and write directly to the output file
+        output_file_path = Path(f"{out_dir}/train.jsonl")
+        processed_count = 0
+        
+        with open(in_file, "r", encoding="utf-8") as fin, open(output_file_path, "w", encoding="utf-8") as fout:
             for line in fin:
                 line = line.strip()
                 if not line:
                     continue   
                 record = json.loads(line)
-                prompt = record.get("prompt", "")
-                completion = record.get("completion", "")
-                conversation_messages = [
-                    {"role": "user", "content": prompt},
-                    {"role": "assistant", "content": completion}
-                ]
-
-                messages.append(conversation_messages)
-
-        # 4. Write the formatted messages to the output file
-        output_file_path = Path(f"{out_dir}/train.jsonl")
-        processed_count = 0
-        with open(output_file_path, "w", encoding="utf-8") as fout:
-            for conversation_messages in messages:  
-                formatted_output = chat_template.render(
-                    messages=conversation_messages, 
-                    add_generation_prompt=False
-                )
-                out_record = {"text": formatted_output}
+                formatted_text = self._format_record(record, chat_template)
+                out_record = {"text": formatted_text}
                 fout.write(json.dumps(out_record, ensure_ascii=False) + "\n")
                 processed_count += 1
 
-        print(f"Successfully processed {processed_count} records into {output_file_path}")
+        log("TrainingService", f"Successfully processed {processed_count} records into {output_file_path}")
     
+        # 5. Copy training file to validation dataset slot
         valid_file_path = self.get_data_dir() / "valid.jsonl"
         shutil.copy(output_file_path, valid_file_path)
-        print(f"Successfully copied {output_file_path} to {valid_file_path}")
+        log("TrainingService", f"Successfully copied {output_file_path} to {valid_file_path}")
 
     def train_lora(self):
         batch_size = get_property("lora_batch_size")
@@ -163,12 +171,18 @@ class TrainingService:
         self._run_cmd(cmd)
 
     def install_chat_template(self):
+        if not get_property("chat_template"):
+            log("TrainingService", "No chat template, skipping install")
+            return
+        if get_property("chat_template") == "None":
+            log("TrainingService", "Chat template is None, skipping install")
+            return
         chat_template_path = get_templates_dir() / get_property("chat_template")
         if not chat_template_path.exists():
             raise FileNotFoundError(f"Chat template not found at {chat_template_path}. Please ensure it exists.")
         output_path = self.get_fused_model_path() / "chat_template.jinja"
         shutil.copy(chat_template_path, output_path)
-        print(f"Successfully generated template at: {output_path}")
+        log("TrainingService", f"Successfully generated template at: {output_path}")
 
     def quantize_fused_model(self):
         q_bits = get_property("quantization_bits")
@@ -191,10 +205,10 @@ class TrainingService:
         target_path = Path(get_target_models_dir() / target_model)
 
         if self.get_quantized_model_path().exists():
-            print(f"[INFO] Deploying quantized fused model from {self.get_quantized_model_path()} to {target_path}.")
+            log("TrainingService", f"[INFO] Deploying quantized fused model from {self.get_quantized_model_path()} to {target_path}.")
             source_to_copy = self.get_quantized_model_path()
         elif self.get_fused_model_path().exists():
-            print(f"[INFO] Deploying unquantized fused model from {self.get_fused_model_path()} to {target_path}.")
+            log("TrainingService", f"[INFO] Deploying unquantized fused model from {self.get_fused_model_path()} to {target_path}.")
             source_to_copy = self.get_fused_model_path()
         else:
             raise FileNotFoundError(f"[ERROR] Neither quantized nor fused model found for source '{get_property('source_model')}' in generated/")
@@ -203,12 +217,12 @@ class TrainingService:
             shutil.rmtree(target_path)
 
         shutil.copytree(source_to_copy, target_path)
-        print(f"[INFO] Successfully deployed model to {target_path}.")
+        log("TrainingService", f"[INFO] Successfully deployed model to {target_path}.")
 
     def request_cancel(self):
         """Signals the pipeline to stop after the current step completes."""
         self._cancel_requested = True
-        print("\n[TrainingService] Stop requested by user. Will halt after current step.")
+        log("TrainingService", "Stop requested by user. Will halt after current step.")
 
     def apply_pipeline(self):
         """Runs all steps sequentially as standard blocking calls."""
@@ -226,17 +240,17 @@ class TrainingService:
 
         for step_name, step_func in steps:
             if self._cancel_requested:
-                print(f"\n[PIPELINE] Stopping queue. Skipping remaining step: {step_name}")
+                log("PIPELINE", f"Stopping queue. Skipping remaining step: {step_name}")
                 break
 
-            print(f"\n[PIPELINE] Starting step: {step_name}")
+            log("PIPELINE", f"Starting step: {step_name}")
             # Each step blocks completely until finished
             step_func()
-            print(f"[PIPELINE] Successfully completed step: {step_name}")
+            log("PIPELINE", f"Successfully completed step: {step_name}")
 
         if self._cancel_requested:
-            print("\n[PIPELINE] Pipeline successfully stopped after current step.")
+            log("PIPELINE", "Pipeline successfully stopped after current step.")
         else:
-            print("\n[PIPELINE] All pipeline steps completed successfully!")
+            log("PIPELINE", "All pipeline steps completed successfully!")
 
 training_service = TrainingService()

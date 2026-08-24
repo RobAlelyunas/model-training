@@ -24,13 +24,13 @@ class DataTab(ttk.Frame):
         new_file_version = get_property("dataset_version")
         new_dataset = get_property("dataset")
         if new_dataset != self.dataset:
-            # dataset changed: switch file, reset index to 0, and load
+            # dataset changed: switch file, reset index to 0, and load[cite: 8]
             self.dataset = new_dataset
             self.file_version = new_file_version
             self.current_index = 0
             self.load_current_record()
         elif new_file_version != self.file_version:
-            # File version changed externally: update version tracker and reload current record
+            # File version changed externally: update version tracker and reload current record[cite: 8]
             self.file_version = new_file_version
             self.load_current_record()
 
@@ -49,7 +49,20 @@ class DataTab(ttk.Frame):
         self.next_button.pack(side="left", padx=5)
 
         self.index_label = ttk.Label(nav_frame, text="Record: 1 / 1")
-        self.index_label.pack(side="left", padx=20)
+        self.index_label.pack(side="left", padx=10)
+
+        # Smooth Record Slider for quick navigation
+        self.slider_var = tk.IntVar(value=1)
+        self.record_slider = ttk.Scale(
+            nav_frame, 
+            from_=1, 
+            to=1, 
+            orient="horizontal", 
+            variable=self.slider_var,
+            command=self.on_slider_motion
+        )
+        self.record_slider.pack(side="left", fill="x", expand=True, padx=15)
+        self.record_slider.bind("<ButtonRelease-1>", self.on_slider_release)
 
         self.new_button = ttk.Button(nav_frame, text="+ Add New Record", command=self.add_record)
         self.new_button.pack(side="right", padx=5)
@@ -101,6 +114,8 @@ class DataTab(ttk.Frame):
             return 0
         count = 0
         data_path = get_datasets_dir() / self.dataset
+        if not data_path.exists():
+            return 0
         with open(data_path, "r", encoding="utf-8") as f:
             for line in f:
                 if line.strip():
@@ -113,6 +128,9 @@ class DataTab(ttk.Frame):
         
         current_idx = 0
         data_path = get_datasets_dir() / self.dataset
+        if not data_path.exists():
+            return {"prompt": "", "completion": ""}
+
         with open(data_path, "r", encoding="utf-8") as f:
             for line in f:
                 if line.strip():
@@ -148,9 +166,30 @@ class DataTab(ttk.Frame):
         self.is_dirty = False
 
         self.index_label.config(text=f"Record: {self.current_index + 1} / {total}")
+        
+        # Update slider configuration safely without triggering unwanted slider events
+        self.record_slider.config(to=total)
+        self.slider_var.set(self.current_index + 1)
+
+    def on_slider_motion(self, event=None):
+        """Updates the label dynamically as the user drags the slider."""
+        target_val = int(self.slider_var.get())
+        total = self._get_total_line_count() or 1
+        self.index_label.config(text=f"Record: {target_val} / {total}")
+
+    def on_slider_release(self, event=None):
+        """Saves current state and jumps to the selected slider record position upon release."""
+        target_index = int(self.slider_var.get()) - 1
+        total = self._get_total_line_count()
+        if total > 0:
+            target_index = max(0, min(target_index, total - 1))
+            if target_index != self.current_index:
+                if self.save_current_record():
+                    self.current_index = target_index
+                    self.load_current_record()
 
     def save_current_record(self) -> bool:
-        """Saves the active record to disk only if modifications were made."""
+        """Saves the active record to disk only if modifications were made[cite: 8]."""
         if not self.is_dirty:
             return True
 
@@ -162,8 +201,9 @@ class DataTab(ttk.Frame):
             lines = []
             if self.dataset:
                 data_path = get_datasets_dir() / self.dataset
-                with open(data_path, "r", encoding="utf-8") as f:
-                    lines = f.readlines()
+                if data_path.exists():
+                    with open(data_path, "r", encoding="utf-8") as f:
+                        lines = f.readlines()
 
             while len(lines) <= self.current_index:
                 lines.append("\n")
@@ -210,8 +250,9 @@ class DataTab(ttk.Frame):
             lines = []
             if self.dataset:
                 data_path = get_datasets_dir() / self.dataset
-                with open(data_path, "r", encoding="utf-8") as f:
-                    lines = f.readlines()
+                if data_path.exists():
+                    with open(data_path, "r", encoding="utf-8") as f:
+                        lines = f.readlines()
 
             if len(lines) <= 1:
                 self.prompt_text.delete("1.0", "end")
