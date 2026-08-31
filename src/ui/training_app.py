@@ -7,6 +7,11 @@ from src.ui.data_tab import DataTab
 from src.ui.train_tab import TrainTab
 from src.ui.setup_tab import SetupTab
 from src.ui.ui_theme import apply_global_theme
+from src.ui.help.splash_screen import SplashScreen
+from src.ui.help.setup_tab_help import SetupHelpDialog
+from src.ui.help.train_tab_help import TrainHelpDialog
+from src.ui.help.apply_tab_help import ApplyHelpDialog
+from src.ui.help.data_tab_help import DataHelpDialog
 
 class TrainingApp(tk.Tk):
 
@@ -34,8 +39,6 @@ class TrainingApp(tk.Tk):
         self.global_help_label.bind("<Button-1>", lambda e: self.show_context_help())
 
         # Add the Setup Tab first (Index 0)
-        self.setup_tab = SetupTab(self.notebook)
-        self.notebook.add(self.setup_tab, text="Setup")
 
         self.train_tab = TrainTab(self.notebook)
         self.notebook.add(self.train_tab, text="Interactive Training")
@@ -46,59 +49,14 @@ class TrainingApp(tk.Tk):
         self.data_tab = DataTab(self.notebook)
         self.notebook.add(self.data_tab, text="Dataset Editor")
 
-        # Track current tab index for guard rollbacks
-        self.current_tab_index = 0
-        
-        # Bind the notebook tab change event
-        self.notebook.bind("<<NotebookTabChanged>>", self.on_tab_changed)
+        self.setup_tab = SetupTab(self.notebook)
+        self.notebook.add(self.setup_tab, text="Setup")
 
-    def on_tab_changed(self, event):
-        """Guard for tab changes"""
-        selected_tab_index = self.notebook.index(self.notebook.select())
-        source_model = get_property("source_model")
-        target_model = get_property("target_model")
-        dataset = get_property("dataset")
-        chat_template = get_property("chat_template")
-        if selected_tab_index == 0:
-            # Setup tab (index 0)
-            self.current_tab_index = 0
-        elif selected_tab_index == 1:
-            # Interactive Training tab
-            if not target_model or not dataset or not chat_template:
-                self.notebook.select(0)
-                self.current_tab_index = 0
-                messagebox.showinfo(
-                    title="Setup Required",
-                    message="Interactive training requires a selected target model, dataset, and chat template",
-                    parent=self)
-            else:
-                self.current_tab_index = 1
-        elif selected_tab_index == 2:
-            # Apply Training tab
-            if not source_model or not target_model or not dataset or not chat_template:
-                self.notebook.select(0)
-                self.current_tab_index = 0
-                messagebox.showinfo(
-                    title="Setup Required",
-                    message="Apply training requires a selected source model, target model, dataset, and chat template",
-                    parent=self)
-            else:
-                self.current_tab_index = 2
-        elif selected_tab_index == 3:
-            # Dataset editor tab
-            if not dataset:
-                self.notebook.select(0)
-                self.current_tab_index = 0
-                messagebox.showinfo(
-                    title="Setup Required",
-                    message="Dataset editor requires a selected dataset",
-                    parent=self)
-            else:
-                self.current_tab_index = 3
-    
+        # Check startup property and trigger splash screen if enabled
+        if get_property("show_splash_on_startup"):
+            self.after(100, lambda: SplashScreen(self))
 
     def show_context_help(self):
-        """Determines the active tab and displays the corresponding context-dependent help message."""
         try:
             current_tab_widget = self.notebook.nametowidget(self.notebook.select())
         except Exception:
@@ -106,33 +64,12 @@ class TrainingApp(tk.Tk):
 
         # Map each tab instance to its specific help content
         if current_tab_widget == self.setup_tab:
-            messagebox.showinfo(
-                "Setup Help",
-                "Configure your source model, target model, dataset, and chat template here before using other tabs.",
-                parent=self
-            )
+            SetupHelpDialog(self)
         elif current_tab_widget == self.apply_tab:
-            messagebox.showinfo(
-                "Apply Training Help",
-                "This is the placeholder for Apply Training help documentation.",
-                parent=self
-            )
+            ApplyHelpDialog(self)
         elif current_tab_widget == self.data_tab:
-            messagebox.showinfo(
-                "Dataset Help",
-                "This is the placeholder for Dataset Editor help documentation.",
-                parent=self
-            )
+            DataHelpDialog(self)
         elif current_tab_widget == self.train_tab:
-            messagebox.showinfo(
-                "Train Model Help",
-                "The Train tab allows you to train your model with the configured dataset.\n\n"
-                "will be saved instead of the model's original response.",
-                parent=self
-            )
+            TrainHelpDialog(self)
         else:
-            messagebox.showinfo(
-                "Help",
-                "This is the placeholder for general application help.",
-                parent=self
-            )
+            SplashScreen(self)

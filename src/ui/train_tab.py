@@ -6,7 +6,7 @@ from pathlib import Path
 from src.core.global_state import get_property
 from src.core.logging import log
 from src.services.inference_engine import inference_engine
-from src.ui.ui_helpers import run_background
+from src.ui.ui_helpers import requires, run_background
 from src.ui.ui_theme import create_styled_text
 from src.core.global_state import register_state_change_handler
 from src.core.global_state import set_property
@@ -172,21 +172,22 @@ class TrainTab(ttk.Frame):
             self.current_response = ""
 
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to load random prompt:\n{e}")
+            messagebox.showerror("Error", f"Failed to load random prompt:\n{e}", parent=self)
 
     def on_random_prompt_clicked(self):
         """Button action to fetch and display a random prompt."""
         self.load_random_prompt_text()
 
+    @requires("target_model", "chat_template")
     def on_generate_clicked(self):
         """User-triggered action to run inference using whatever is currently in the prompt box."""
         if not inference_engine.is_model_loaded():
-            messagebox.showerror("Warning", "Model is not loaded.")
+            messagebox.showerror("Warning", "Model is not loaded.", parent=self)
             return
 
         prompt_content = self.prompt_text.get("1.0", "end-1c").strip()
         if not prompt_content:
-            messagebox.showwarning("Warning", "Prompt box is empty. Please enter or load a prompt first.")
+            messagebox.showwarning("Warning", "Prompt box is empty. Please enter or load a prompt first.", parent=self)
             return
 
         self.current_prompt = prompt_content
@@ -210,11 +211,12 @@ class TrainTab(ttk.Frame):
             self.response_text.delete("1.0", "end")
             self.response_text.insert("1.0", self.current_response)
 
+    @requires("dataset")
     def on_add_clicked(self):
         """Saves the prompt and whatever answer is currently in the response box to the dataset."""
         prompt_content = self.prompt_text.get("1.0", "end-1c").strip()
         if not prompt_content:
-            messagebox.showwarning("Warning", "No active prompt available to save.")
+            messagebox.showerror("Warning", "No active prompt available to save.", parent=self)
             return
 
         answer_to_save = self.response_text.get("1.0", "end-1c").strip()
@@ -235,7 +237,7 @@ class TrainTab(ttk.Frame):
             log("Add Training Record", f"Successfully added curated record to {self.working_dataset_path}")
             set_property("dataset_version", get_property("dataset_version") + 1)
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to append record to dataset:\n{e}")
+            messagebox.showerror("Error", f"Failed to append record to dataset:\n{e}", parent=self)
             return
 
         # Automatically advance to the next random prompt after adding

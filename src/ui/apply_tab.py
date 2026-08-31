@@ -11,7 +11,7 @@ from src.ui.ui_theme import (
     LOG_FG_ERROR
 )
 from src.core.global_state import get_property, register_state_change_handler, set_property
-from src.ui.ui_helpers import run_background
+from src.ui.ui_helpers import requires, run_background
 from src.core.logging import log
 
 
@@ -196,6 +196,7 @@ class ApplyTab(ttk.Frame):
         self.text_box.tag_config("controller_tag", foreground=LOG_FG_CONTROLLER)
         self.text_box.tag_config("error_tag", foreground=LOG_FG_ERROR, font=("Courier", 10, "bold"))
 
+    @requires("source_model", "target_model", "dataset")
     def auto_set_parameters(self):
         """Placeholder for automatically calculating and updating optimal hyperparameters."""
         messagebox.showinfo(
@@ -246,6 +247,7 @@ class ApplyTab(ttk.Frame):
         """Saves current values from checkboxes to global state."""
         set_property("perform_quantization", self.quant_var.get())
 
+    @requires("source_model","target_model","dataset","chat_template")
     def start_workflow(self):
         """Kicks off the complete workflow lifecycle cleanly using the background helper."""
         # Ensure checkbox state is saved

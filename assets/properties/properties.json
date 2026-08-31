@@ -2,16 +2,17 @@
     "source_model": "",
     "target_model": "",
     "dataset": "working_dataset.jsonl",
-    "chat_template": "None",
+    "chat_template": "",
     "lora_batch_size": 1,
     "lora_num_layers": 8,
     "lora_iters": 100,
-    "lora_learning_rate": 2e-05,
+    "lora_learning_rate": "2e-05",
     "perform_quantization": false,
     "quantization_bits": 4,
     "max_inference_tokens": 256,
     "inference_temperature": 0.7,
     "use_chat_template": true,
     "dataset_version": 0,
-    "show_tutorial": true
+    "show_splash_on_startup": true,    
+    "total_memory_gb": 0
 }

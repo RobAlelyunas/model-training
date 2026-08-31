@@ -4,6 +4,7 @@ from tkinter import messagebox, ttk
 from pathlib import Path
 from src.core.global_state import get_property, register_state_change_handler
 from src.core.storage import get_datasets_dir
+from src.ui.ui_helpers import requires
 from src.ui.ui_theme import create_styled_text
 
 class DataTab(ttk.Frame):
@@ -219,6 +220,7 @@ class DataTab(ttk.Frame):
             messagebox.showerror("Error", f"Failed to save record:\n{e}")
             return False
 
+    @requires("dataset")
     def next_record(self):
         if self.save_current_record():
             total = self._get_total_line_count()
@@ -226,12 +228,14 @@ class DataTab(ttk.Frame):
                 self.current_index += 1
                 self.load_current_record()
 
+    @requires("dataset")
     def prev_record(self):
         if self.save_current_record():
             if self.current_index > 0:
                 self.current_index -= 1
                 self.load_current_record()
 
+    @requires("dataset")
     def add_record(self):
         if self.save_current_record():
             blank_line = json.dumps({"prompt": "", "completion": ""}, ensure_ascii=False) + "\n"
@@ -245,6 +249,7 @@ class DataTab(ttk.Frame):
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to add record:\n{e}")
 
+    @requires("dataset")
     def delete_record(self):
         try:
             lines = []

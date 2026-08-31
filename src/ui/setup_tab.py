@@ -153,7 +153,7 @@ class SetupTab(ttk.Frame):
         template_frame.grid(row=1, column=1, sticky="nsew", padx=(10, 0), pady=(10, 0))
 
         # 1. Dropdown at the top
-        self.template_var = tk.StringVar(value="None")
+        self.template_var = tk.StringVar(value="")
         self.template_combo = ttk.Combobox(
             template_frame, 
             textvariable=self.template_var, 
@@ -217,10 +217,6 @@ class SetupTab(ttk.Frame):
         self.load_target_models()
         self.load_datasets()
         self.load_templates()
-
-        # Set default state property if not already set
-        if not get_property("chat_template"):
-            set_property("chat_template", "None")
 
         # Pre-populate fields if values already exist in global state
         self.sync_ui_with_state()
@@ -376,23 +372,31 @@ class SetupTab(ttk.Frame):
         if val:
             set_property("source_model", val)
             
-            # Automatically match the chat template based on the source model family
+            # Automatically match the chat template based on the model family prefix
             self.load_templates() # Refresh available templates first
             available_templates = self.template_combo['values']
             if available_templates:
                 source_lower = val.lower()
                 matched_template = None
                 
-                # Check for common keywords in model name to map to template files (excluding "None")
-                for tmpl in available_templates:
-                    if tmpl == "None":
-                        continue
-                    tmpl_lower = tmpl.lower()
-                    if any(keyword in source_lower and keyword in tmpl_lower for keyword in ["llama", "mistral", "gemma", "qwen", "phi"]):
-                        matched_template = tmpl
+                # Check for model family keywords in the source model name
+                families = ["qwen", "mistral", "gemma", "llama", "phi"]
+                detected_family = None
+                for fam in families:
+                    if fam in source_lower:
+                        detected_family = fam
                         break
                 
-                # Fallback to first actual template if keyword match fails
+                # Find a template filename that starts with or contains the detected family name
+                if detected_family:
+                    for tmpl in available_templates:
+                        if tmpl == "None":
+                            continue
+                        if detected_family in tmpl.lower():
+                            matched_template = tmpl
+                            break
+                
+                # Fallback to first actual template if specific family match fails
                 if not matched_template and len(available_templates) > 1:
                     matched_template = available_templates[1]
                 
