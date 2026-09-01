@@ -91,6 +91,11 @@ jobs:
             --team-id "$APPLE_TEAM_ID" \
             --wait
 
+          xcrun notarytool log 53a5cded-32a3-433a-b2b8-b1e52e829080 \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID"
+
           echo "Stapling notarization ticket..."
           xcrun stapler staple "$DMG_PATH"
 
