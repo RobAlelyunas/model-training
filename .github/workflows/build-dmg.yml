@@ -63,20 +63,18 @@ jobs:
           DMG_PATH="dist/Interactive Model Training.dmg"
           IDENTITY="Developer ID Application: ROBERT STANLEY ALELYUNAS ($APPLE_TEAM_ID)"
 
-          echo "Signing inner frameworks, libraries, and executables..."
-          # Find and sign all dylibs, frameworks, and helper executables inside the app first
-          find "$APP_PATH/Contents" -type f \( -name "*.dylib" -o -name "*.so" -o -name "*.framework" -o -name "*.app" \) | while read -r file; do
-            codesign --force --options runtime --timestamp --sign "$IDENTITY" "$file" || true
+          echo "Deep-cleaning and signing all nested binaries across entire Contents directory..."
+          
+          # Use find to catch every dylib, shared object (.so), bundle, framework, or executable 
+          # anywhere inside Contents/ (Frameworks, Resources, MacOS, etc.)
+          find "$APP_PATH/Contents" -type f \( -name "*.dylib" -o -name "*.so" -o -name "*.bundle" \) | while read -r file; do
+            codesign --force --options runtime --timestamp --sign "$IDENTITY" "$file"
           done
 
-          # If your app bundles a Python executable or helpers, ensure they are signed
-          if [ -d "$APP_PATH/Contents/MacOS" ]; then
-            for file in "$APP_PATH/Contents/MacOS/"*; do
-              if [ -f "$file" ]; then
-                codesign --force --options runtime --timestamp --sign "$IDENTITY" "$file"
-              fi
-            done
-          fi
+          # Also catch any standalone executables or helper tools that might lack extensions
+          find "$APP_PATH/Contents/MacOS" -type f | while read -r file; do
+            codesign --force --options runtime --timestamp --sign "$IDENTITY" "$file"
+          done
 
           echo "Signing the main app bundle..."
           codesign --force --options runtime --timestamp --sign "$IDENTITY" "$APP_PATH"
@@ -98,9 +96,6 @@ jobs:
               --team-id "$APPLE_TEAM_ID"
             exit 1
           fi
-
-          echo "Stapling notarization ticket..."
-          xcrun stapler staple "$DMG_PATH"
 
           echo "Stapling notarization ticket..."
           xcrun stapler staple "$DMG_PATH"
