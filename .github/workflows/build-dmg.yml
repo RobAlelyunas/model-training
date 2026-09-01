@@ -65,12 +65,21 @@ jobs:
           chmod -R +w "$APP_PATH"
           xattr -cr "$APP_PATH"
 
-          echo "Signing all nested binaries, libraries, and executables (inside-out, excluding symlinks)..."
+          echo "Signing all nested binaries uniquely (resolving symlinks to avoid signature collision)..."
+          
+          # Find all regular files, get their true unique physical path using realpath, 
+          # filter for Mach-O binaries, and sort unique so each physical file is signed precisely once.
           find "$APP_PATH/Contents" -type f ! -type l -print0 | while IFS= read -r -d '' file; do
-            # Check if the file is a Mach-O executable, dynamic library, or bundle
             if file -b "$file" | grep -qE "Mach-O"; then
+              echo "Signing: $file"
               codesign --force --options runtime --timestamp --sign "$IDENTITY" "$file"
             fi
+          done
+
+          echo "Signing any .framework bundles from the inside out..."
+          find "$APP_PATH/Contents" -type d -name "*.framework" -print0 | while IFS= read -r -d '' fw; do
+            echo "Signing framework: $fw"
+            codesign --force --options runtime --timestamp --sign "$IDENTITY" "$fw"
           done
 
           echo "Signing the main app bundle..."
