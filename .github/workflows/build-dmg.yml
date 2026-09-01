@@ -1,7 +1,8 @@
 name: Build macOS DMG
 
 permissions:
-      contents: write
+  contents: write
+
 on:
   push:
     branches:
@@ -31,12 +32,59 @@ jobs:
           chmod +x build_app.sh
           ./build_app.sh
 
+      - name: Install the certificate and provisioning profile
+        env:
+          BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+        run: |
+          # Create variables
+          CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+
+          # Import certificate from secrets
+          echo -n "$BUILD_CERTIFICATE_BASE64" | base64 --decode -o $CERTIFICATE_PATH
+
+          # Create temporary keychain
+          security create-keychain -p "" $KEYCHAIN_PATH
+          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+          security unlock-keychain -p "" $KEYCHAIN_PATH
+
+          # Import certificate to keychain
+          security import $CERTIFICATE_PATH -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+          security list-keychain -d user -s $KEYCHAIN_PATH
+
+      - name: Sign and Notarize Application
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: |
+          APP_PATH="dist/Interactive Model Training.app"
+          DMG_PATH="dist/Interactive Model Training.dmg"
+          
+          # Sign the app bundle (deep sign binaries/frameworks inside)
+          codesign --deep --force --options runtime --sign "Developer ID Application: $APPLE_TEAM_ID" "$APP_PATH"
+          
+          # Re-pack into DMG if your build script outputs an unsigned one, or sign the DMG itself
+          # (Ensure your build_app.sh outputs the app, and we sign it here before packaging, or sign the final DMG)
+          codesign --force --sign "Developer ID Application: $APPLE_TEAM_ID" "$DMG_PATH"
+
+          # Submit to Apple Notary Service
+          xcrun notarytool submit "$DMG_PATH" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+
+          # Staple the notarization ticket to the DMG
+          xcrun stapler staple "$DMG_PATH"
+
       - name: Upload DMG to GitHub Releases
         uses: softprops/action-gh-release@v2
         with:
           files: dist/Interactive\ Model\ Training.dmg
           tag_name: v1.0.${{ github.run_number }}
           name: "Interactive Model Training v1.0.${{ github.run_number }}"
-          body: "Automated build generated from commit ${{ github.sha }}"
+          body: "Automated signed and notarized build generated from commit ${{ github.sha }}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
