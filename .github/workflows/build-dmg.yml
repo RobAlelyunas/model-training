@@ -1,4 +1,4 @@
-name: Build macOS DMG
+name: Build, Sign, and Notarize macOS DMG
 
 permissions:
   contents: write
@@ -27,70 +27,78 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run build script
+      - name: Run build script (App Compilation)
         run: |
           chmod +x build_app.sh
           ./build_app.sh
 
-      - name: Install the certificate and provisioning profile
+      - name: Install the signing certificate
         env:
           BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
           P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
         run: |
-          # Create variables
           CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
           KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
 
-          # Import certificate from secrets
           echo -n "$BUILD_CERTIFICATE_BASE64" | base64 --decode -o $CERTIFICATE_PATH
 
-          # Create temporary keychain
-          security create-keychain -p "" $KEYCHAIN_PATH
+          security create-keychain -p "temporary_password" $KEYCHAIN_PATH
           security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
-          security unlock-keychain -p "" $KEYCHAIN_PATH
+          security unlock-keychain -p "temporary_password" $KEYCHAIN_PATH
 
-          # Import certificate to keychain
           security import $CERTIFICATE_PATH -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
           security list-keychain -d user -s $KEYCHAIN_PATH
+          security default-keychain -s $KEYCHAIN_PATH
+          security unlock-keychain -p "temporary_password" $KEYCHAIN_PATH
 
-      - name: Sign and Notarize Application
+      - name: Sign, Package DMG, and Notarize
         env:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
         run: |
-          APP_PATH="dist/Interactive Model Training.app"
-          DMG_PATH="dist/Interactive Model Training.dmg"
           IDENTITY="Developer ID Application: ROBERT STANLEY ALELYUNAS ($APPLE_TEAM_ID)"
+          APP_PATH="dist/Interactive Model Training.app"
+          DMG_NAME="dist/Interactive Model Training.dmg"
 
-          echo "Deep-cleaning and signing all nested binaries across entire Contents directory..."
-          
-          # Use find to catch every dylib, shared object (.so), bundle, framework, or executable 
-          # anywhere inside Contents/ (Frameworks, Resources, MacOS, etc.)
-          find "$APP_PATH/Contents" -type f \( -name "*.dylib" -o -name "*.so" -o -name "*.bundle" \) | while read -r file; do
+          echo "Preparing app for code signing..."
+          chmod -R +w "$APP_PATH"
+          xattr -cr "$APP_PATH"
+
+          echo "Signing all nested binaries inside the app (inside-out)..."
+          find "$APP_PATH/Contents" -type f \( -name "*.dylib" -o -name "*.so" -o -name "*.bundle" -o -name "*.framework" \) -print0 | while IFS= read -r -d '' file; do
             codesign --force --options runtime --timestamp --sign "$IDENTITY" "$file"
           done
 
-          # Also catch any standalone executables or helper tools that might lack extensions
-          find "$APP_PATH/Contents/MacOS" -type f | while read -r file; do
+          find "$APP_PATH/Contents/MacOS" -type f -print0 | while IFS= read -r -d '' file; do
             codesign --force --options runtime --timestamp --sign "$IDENTITY" "$file"
           done
 
           echo "Signing the main app bundle..."
           codesign --force --options runtime --timestamp --sign "$IDENTITY" "$APP_PATH"
 
-          echo "Signing the DMG..."
-          codesign --force --timestamp --sign "$IDENTITY" "$DMG_PATH"
+          echo "Preparing DMG staging directory..."
+          rm -rf build/dmg
+          mkdir -p build/dmg
+          cp -r "$APP_PATH" build/dmg/
+          ln -s /Applications build/dmg/Applications
+
+          echo "Creating DMG package..."
+          rm -f "$DMG_NAME"
+          hdiutil create -volname "Interactive Model Training" -srcfolder build/dmg -ov -format UDZO "$DMG_NAME"
+
+          echo "Signing the final DMG package..."
+          codesign --force --timestamp --sign "$IDENTITY" "$DMG_NAME"
 
           echo "Submitting to Apple Notary Service..."
-          xcrun notarytool submit "$DMG_PATH" \
+          xcrun notarytool submit "$DMG_NAME" \
             --apple-id "$APPLE_ID" \
             --password "$APPLE_APP_SPECIFIC_PASSWORD" \
             --team-id "$APPLE_TEAM_ID" \
-            --wait; then
+            --wait
 
           echo "Stapling notarization ticket..."
-          xcrun stapler staple "$DMG_PATH"
+          xcrun stapler staple "$DMG_NAME"
 
       - name: Upload DMG to GitHub Releases
         uses: softprops/action-gh-release@v2
