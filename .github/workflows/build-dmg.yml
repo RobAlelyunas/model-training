@@ -83,19 +83,11 @@ jobs:
           codesign --force --timestamp --sign "$IDENTITY" "$DMG_PATH"
 
           echo "Submitting to Apple Notary Service..."
-          if ! xcrun notarytool submit "$DMG_PATH" \
+          xcrun notarytool submit "$DMG_PATH" \
             --apple-id "$APPLE_ID" \
             --password "$APPLE_APP_SPECIFIC_PASSWORD" \
             --team-id "$APPLE_TEAM_ID" \
             --wait; then
-            
-            echo "Notarization failed! Pulling recent submission history for details..."
-            xcrun notarytool history \
-              --apple-id "$APPLE_ID" \
-              --password "$APPLE_APP_SPECIFIC_PASSWORD" \
-              --team-id "$APPLE_TEAM_ID"
-            exit 1
-          fi
 
           echo "Stapling notarization ticket..."
           xcrun stapler staple "$DMG_PATH"

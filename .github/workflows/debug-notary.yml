@@ -1,0 +1,25 @@
+name: Fetch Notary Log
+
+on:
+  workflow_dispatch:
+    inputs:
+      submission_id:
+        description: 'Apple Notary Submission ID (UUID)'
+        required: true
+        default: '4fd52853-0ce7-4a41-8c23-5bc83b954e21'
+
+jobs:
+  get-log:
+    runs-on: macos-latest
+    steps:
+      - name: Fetch Apple Notarization Log
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: |
+          echo "Fetching log for submission: ${{ github.event.inputs.submission_id }}"
+          xcrun notarytool log "${{ github.event.inputs.submission_id }}" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID"
