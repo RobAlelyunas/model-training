@@ -65,8 +65,8 @@ jobs:
           chmod -R +w "$APP_PATH"
           xattr -cr "$APP_PATH"
 
-          echo "Signing all nested binaries, libraries, and executables (inside-out)..."
-          find "$APP_PATH/Contents" -type f -print0 | while IFS= read -r -d '' file; do
+          echo "Signing all nested binaries, libraries, and executables (inside-out, excluding symlinks)..."
+          find "$APP_PATH/Contents" -type f ! -type l -print0 | while IFS= read -r -d '' file; do
             # Check if the file is a Mach-O executable, dynamic library, or bundle
             if file -b "$file" | grep -qE "Mach-O"; then
               codesign --force --options runtime --timestamp --sign "$IDENTITY" "$file"
