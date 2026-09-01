@@ -61,27 +61,37 @@ jobs:
         run: |
           APP_PATH="dist/Interactive Model Training.app"
           DMG_PATH="dist/Interactive Model Training.dmg"
-          
-          # Sign the app bundle (deep sign binaries/frameworks inside)
-          codesign --deep --force --options runtime --sign "Developer ID Application: ROBERT STANLEY ALELYUNAS ($APPLE_TEAM_ID)" "$APP_PATH"
-          
-          # Re-pack into DMG if your build script outputs an unsigned one, or sign the DMG itself
-          # (Ensure your build_app.sh outputs the app, and we sign it here before packaging, or sign the final DMG)
-          codesign --force --sign "Developer ID Application: ROBERT STANLEY ALELYUNAS ($APPLE_TEAM_ID)" "$DMG_PATH"
+          IDENTITY="Developer ID Application: ROBERT STANLEY ALELYUNAS ($APPLE_TEAM_ID)"
 
-          # Submit to Apple Notary Service
+          echo "Signing inner frameworks, libraries, and executables..."
+          # Find and sign all dylibs, frameworks, and helper executables inside the app first
+          find "$APP_PATH/Contents" -type f \( -name "*.dylib" -o -name "*.so" -o -name "*.framework" -o -name "*.app" \) | while read -r file; do
+            codesign --force --options runtime --timestamp --sign "$IDENTITY" "$file" || true
+          done
+
+          # If your app bundles a Python executable or helpers, ensure they are signed
+          if [ -d "$APP_PATH/Contents/MacOS" ]; then
+            for file in "$APP_PATH/Contents/MacOS/"*; do
+              if [ -f "$file" ]; then
+                codesign --force --options runtime --timestamp --sign "$IDENTITY" "$file"
+              fi
+            done
+          fi
+
+          echo "Signing the main app bundle..."
+          codesign --force --options runtime --timestamp --sign "$IDENTITY" "$APP_PATH"
+
+          echo "Signing the DMG..."
+          codesign --force --timestamp --sign "$IDENTITY" "$DMG_PATH"
+
+          echo "Submitting to Apple Notary Service..."
           xcrun notarytool submit "$DMG_PATH" \
             --apple-id "$APPLE_ID" \
             --password "$APPLE_APP_SPECIFIC_PASSWORD" \
             --team-id "$APPLE_TEAM_ID" \
             --wait
 
-          xcrun notarytool log 0b3f6978-10b1-406f-839a-23b9ec3759d8 \
-            --apple-id "$APPLE_ID" \
-            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
-            --team-id "$APPLE_TEAM_ID"
-
-          # Staple the notarization ticket to the DMG
+          echo "Stapling notarization ticket..."
           xcrun stapler staple "$DMG_PATH"
 
       - name: Upload DMG to GitHub Releases
