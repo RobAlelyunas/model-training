@@ -61,6 +61,19 @@ jobs:
           APP_PATH="dist/Interactive Model Training.app"
           DMG_NAME="dist/Interactive Model Training.dmg"
 
+          echo "Replacing problematic wrapper symlinks with real physical binaries..."
+          REAL_PYTHON="$APP_PATH/Contents/Frameworks/Python.framework/Versions/3.14/Python"
+          if [ -f "$REAL_PYTHON" ]; then
+            rm -f "$APP_PATH/Contents/Resources/Python"
+            cp "$REAL_PYTHON" "$APP_PATH/Contents/Resources/Python"
+            rm -f "$APP_PATH/Contents/Frameworks/Python"
+            cp "$REAL_PYTHON" "$APP_PATH/Contents/Frameworks/Python"
+            rm -f "$APP_PATH/Contents/Resources/Python.framework/Python"
+            cp "$REAL_PYTHON" "$APP_PATH/Contents/Resources/Python.framework/Python"
+            rm -f "$APP_PATH/Contents/Frameworks/Python.framework/Python"
+            cp "$REAL_PYTHON" "$APP_PATH/Contents/Frameworks/Python.framework/Python"
+          fi
+
           echo "Preparing app for code signing..."
           chmod -R +w "$APP_PATH"
           xattr -cr "$APP_PATH"
@@ -74,13 +87,6 @@ jobs:
               fi
             fi
           done
-
-          echo "Explicitly signing the core Python framework binary..."
-          # This is the actual physical binary at the end of all the symlinks
-          PYTHON_REAL_BIN="$APP_PATH/Contents/Frameworks/Python.framework/Versions/3.14/Python"
-          if [ -f "$PYTHON_REAL_BIN" ]; then
-            codesign --force --options runtime --timestamp --sign "$IDENTITY" "$PYTHON_REAL_BIN"
-          fi
 
           echo "Signing the main app executable..."
           codesign --force --options runtime --timestamp --sign "$IDENTITY" "$APP_PATH/Contents/MacOS/Interactive Model Training"
