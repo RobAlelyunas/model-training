@@ -61,50 +61,41 @@ jobs:
           APP_PATH="dist/Interactive Model Training.app"
           DMG_NAME="dist/Interactive Model Training.dmg"
 
-          echo "Replacing problematic wrapper symlinks with real physical binaries..."
-          REAL_PYTHON="$APP_PATH/Contents/Frameworks/Python.framework/Versions/3.14/Python"
-          if [ -f "$REAL_PYTHON" ]; then
-            rm -f "$APP_PATH/Contents/Resources/Python"
-            cp "$REAL_PYTHON" "$APP_PATH/Contents/Resources/Python"
-            rm -f "$APP_PATH/Contents/Frameworks/Python"
-            cp "$REAL_PYTHON" "$APP_PATH/Contents/Frameworks/Python"
-            rm -f "$APP_PATH/Contents/Resources/Python.framework/Python"
-            cp "$REAL_PYTHON" "$APP_PATH/Contents/Resources/Python.framework/Python"
-            rm -f "$APP_PATH/Contents/Frameworks/Python.framework/Python"
-            cp "$REAL_PYTHON" "$APP_PATH/Contents/Frameworks/Python.framework/Python"
-          fi
-
-          echo "Preparing app for code signing..."
+          echo "Resetting attributes..."
           chmod -R +w "$APP_PATH"
           xattr -cr "$APP_PATH"
 
-          echo "Signing all inner libraries, shared objects, and extensions..."
-          find "$APP_PATH/Contents" -type f ! -type l -print0 | while IFS= read -r -d '' file; do
-            if file -b "$file" | grep -qE "Mach-O"; then
-              # Skip signing the main app executable here, we sign it last
-              if [[ "$file" != *"Contents/MacOS/Interactive Model Training"* ]]; then
-                codesign --force --options runtime --timestamp --sign "$IDENTITY" "$file"
-              fi
+          echo "Signing all nested Mach-O binaries, shared libraries, and executables..."
+          find "$APP_PATH/Contents" -type f -print0 | while IFS= read -r -d '' file; do
+            # Check if the file is a Mach-O binary (executables, dylibs, so files)
+            if file -b "$file" | grep -q "Mach-O"; then
+              codesign --force --options runtime --timestamp --sign "$IDENTITY" "$file"
             fi
           done
 
-          echo "Signing the main app executable..."
-          codesign --force --options runtime --timestamp --sign "$IDENTITY" "$APP_PATH/Contents/MacOS/Interactive Model Training"
+          echo "Signing frameworks as bundles..."
+          find "$APP_PATH/Contents" -name "*.framework" -type d -print0 | while IFS= read -r -d '' framework; do
+            codesign --force --options runtime --timestamp --sign "$IDENTITY" "$framework"
+          done
 
-          echo "Signing the main app bundle container..."
+          echo "Signing top-level app bundle..."
           codesign --force --options runtime --timestamp --sign "$IDENTITY" "$APP_PATH"
-          
-          echo "Preparing DMG staging directory..."
+
+          echo "Verifying local bundle signature..."
+          codesign -vvv --deep --strict "$APP_PATH"
+          spctl --assess --type execute --verbose=4 "$APP_PATH" || true
+
+          echo "Preparing DMG staging..."
           rm -rf build/dmg
           mkdir -p build/dmg
-          cp -r "$APP_PATH" build/dmg/
+          cp -R "$APP_PATH" build/dmg/
           ln -s /Applications build/dmg/Applications
 
-          echo "Creating DMG package..."
+          echo "Creating DMG..."
           rm -f "$DMG_NAME"
           hdiutil create -volname "Interactive Model Training" -srcfolder build/dmg -ov -format UDZO "$DMG_NAME"
 
-          echo "Signing the final DMG package..."
+          echo "Signing DMG container..."
           codesign --force --timestamp --sign "$IDENTITY" "$DMG_NAME"
 
           echo "Submitting to Apple Notary Service..."
