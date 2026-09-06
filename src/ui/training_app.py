@@ -5,7 +5,7 @@ from src.core.storage import get_references_dir
 from src.ui.apply_tab import ApplyTab
 from src.ui.data_tab import DataTab
 from src.ui.train_tab import TrainTab
-from src.ui.setup_tab import SetupTab
+from src.ui.setup.setup_tab import SetupTab
 from src.ui.ui_theme import apply_global_theme
 from src.ui.help.splash_screen import SplashScreen
 from src.ui.help.setup_tab_help import SetupHelpDialog

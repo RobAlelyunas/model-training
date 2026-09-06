@@ -14,5 +14,7 @@
     "use_chat_template": true,
     "dataset_version": 0,
     "show_splash_on_startup": true,    
-    "total_memory_gb": 0
+    "total_memory_gb": 0,
+    "starter_model_larger": "ralelyunas/Meta-Llama-3-8B-4bit",
+    "starter_model": "ralelyunas/Llama-3.2-3B-4bit"
 }

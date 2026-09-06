@@ -1,7 +1,7 @@
 import tkinter as tk
 from tkinter import messagebox, ttk
-import sys
 from src.services.inference_engine import inference_engine
+from src.services.run_command import TaskHandle
 from src.services.training_service import training_service
 from src.ui.ui_theme import (
     LOG_BG, 
@@ -15,38 +15,13 @@ from src.ui.ui_helpers import requires, run_background
 from src.core.logging import log
 
 
-class StdoutRedirector:
-    """Helper to capture standard output and funnel it into the Tkinter text widget with theme colors."""
-    def __init__(self, text_widget):
-        self.text_widget = text_widget
-
-    def write(self, message):
-        if not message:
-            return
-            
-        if "[PIPELINE]" in message:
-            tag = "pipeline_tag"
-        elif "[ProcessController]" in message or "[InferenceEngine]" in message or "[TrainingService]" in message:
-            tag = "controller_tag"
-        elif "Error" in message or "FAILED" in message or "Exception" in message:
-            tag = "error_tag"
-        else:
-            tag = "stdout_tag"
-
-        self.text_widget.insert(tk.END, message, tag)
-        self.text_widget.see(tk.END)
-
-    def flush(self):
-        pass
-
-
 class ApplyTab(ttk.Frame):
 
     def __init__(self, parent):
         super().__init__(parent)
 
-        self.original_stdout = None
         self.model_mapping = {}
+        self.task_handle = None
 
         self.create_widgets()
         register_state_change_handler(self.global_state_changed)
@@ -145,7 +120,6 @@ class ApplyTab(ttk.Frame):
         self.lr_entry.pack(side="left", padx=(0, 10))
         self.lr_entry.bind("<FocusOut>", lambda e: self.validate_and_save_float("lora_learning_rate", self.lr_var, "Learning Rate"))
 
-
         # Row 1: Quantization Settings (Checkbox and Quant Bits)
         row1_frame = ttk.Frame(params_frame)
         row1_frame.pack(fill="x")
@@ -230,7 +204,7 @@ class ApplyTab(ttk.Frame):
         val_str = var.get().strip()
         try:
             val_float = float(val_str)
-            set_property(prop_name, val_str)  # Keep string representation (e.g. "2e-05") or float depending on preference
+            set_property(prop_name, val_str)
         except (ValueError, TypeError):
             messagebox.showerror(
                 "Invalid Input",
@@ -242,98 +216,104 @@ class ApplyTab(ttk.Frame):
                 var.set(str(get_property(prop_name)))
             except KeyError:
                 var.set("2e-05")
- 
+
     def save_hyperparameters(self):
         """Saves current values from checkboxes to global state."""
         set_property("perform_quantization", self.quant_var.get())
 
-    @requires("source_model","target_model","dataset","chat_template")
+    @requires("source_model", "target_model", "dataset", "chat_template")
     def start_workflow(self):
         """Kicks off the complete workflow lifecycle cleanly using the background helper."""
-        # Ensure checkbox state is saved
         self.save_hyperparameters()
 
-        # Log summary statement BEFORE standard out gets redirected to the text window
+        # Instantiate TaskHandle and attach the text widget
+        self.task_handle = TaskHandle()
+        self.task_handle.set_widget(self.text_box)
+
+        # Clear text display for new run
+        self.text_box.delete("1.0", tk.END)
+
+        # Log initial configuration
         dataset_path = get_property("dataset")
         source_model_path = get_property("source_model")
         iters = get_property("lora_iters")
         batch_size = get_property("lora_batch_size")
         num_layers = get_property("lora_num_layers")
         learning_rate = get_property("lora_learning_rate")
-        
+
         log(
             "ApplyTab",
             f"Applying dataset '{dataset_path}' to source model '{source_model_path}' "
             f"with hyperparameters: iters={iters}, batch_size={batch_size}, "
-            f"num_layers={num_layers}, learning_rate={learning_rate}"
+            f"num_layers={num_layers}, learning_rate={learning_rate}",
+            self.task_handle
         )
 
         self.start_button.config(state=tk.DISABLED)
         self.cancel_button.config(state=tk.NORMAL)
-        self.text_box.delete("1.0", tk.END)
-        
-        # Redirect standard output so all log statements stream directly into the text box
-        self.original_stdout = sys.stdout
-        sys.stdout = StdoutRedirector(self.text_box)
 
-        # 1. Pre-Pipeline Tasks (Unload inference model)
-        self.status_label.config(text="Preparing: Unloading inference model...")
-        self.text_box.insert(tk.END, "=== PRE-PIPELINE: UNLOADING INFERENCE MODEL ===\n", "pipeline_tag")
+        # Pre-pipeline step
+        self.status_label.config(text="Preparing: Unloading inference model to save memory...")
+        log("PIPELINE", "=== PRE-PIPELINE: UNLOADING INFERENCE MODEL TO SAVE MEMORY ===", self.task_handle)
         inference_engine.unload_model()
-        
-        self.status_label.config(text="Running training pipeline...")
-        self.text_box.insert(tk.END, "=== STARTING TRAINING PIPELINE ===\n", "pipeline_tag")
 
-        # Track pipeline health for post-execution logging
+        # Start pipeline step
+        self.status_label.config(text="Running training pipeline...")
+        log("PIPELINE", "=== STARTING TRAINING PIPELINE ===", self.task_handle)
+
         pipeline_succeeded = [True]
 
-        # Define background task (now completely synchronous and blocking)
         def background_pipeline_task():
             try:
-                training_service.apply_pipeline()
+                training_service.apply_pipeline(self.task_handle)
             except Exception as e:
                 pipeline_succeeded[0] = False
                 raise e
             return True
 
-        # Define UI cleanup callback when background execution finishes
         def on_pipeline_complete(success):
-            if self.original_stdout:
-                sys.stdout = self.original_stdout
-
-            # Log completion or error status via log() now that stdout redirection is undone
-            if pipeline_succeeded[0] and success:
-                log("ApplyTab", "Successfully trained model workflow completed.")
-            else:
-                log("ApplyTab", "Model training exited with error or failed.")
-
             self.start_button.config(state=tk.NORMAL)
             self.cancel_button.config(state=tk.DISABLED)
 
-            self.status_label.config(text="Finishing: setting target model and loading inference model...")
-            target_model = get_property("target_model")
-            self.text_box.insert(tk.END, f"\n=== POST-PIPELINE: Set Target Model to '{target_model}' ===\n", "pipeline_tag")
-            set_property("target_model", target_model)
-            try:
-                inference_engine.load_model()
-                self.status_label.config(text="Pipeline completed successfully!")
-                self.text_box.insert(tk.END, "=== PIPELINE COMPLETED SUCCESSFULLY ===\n", "pipeline_tag")
-            except Exception as e:
-                self.text_box.insert(tk.END, f"[Error] Failed to reload model: {e}\n", "error_tag")
-                messagebox.showerror("Error", f"Failed to load model:\n{e}")
+            # Check explicit cancellation status first
+            if self.task_handle and self.task_handle.is_cancelled():
+                self.status_label.config(text="Pipeline terminated by user.")
+                log(
+                    "PIPELINE",
+                    "=== PIPELINE TERMINATED BY USER: The process was stopped before completion. "
+                    "Target model artifacts may be incomplete or invalid. ===",
+                    self.task_handle
+                )
+                return
 
-        # Fire it off via the clean background helper
+            if pipeline_succeeded[0] and success:
+                log("ApplyTab", "Successfully trained model workflow completed.", self.task_handle)
+                self.status_label.config(text="Finishing: setting target model and loading inference model...")
+                target_model = get_property("target_model")
+                log("PIPELINE", f"=== POST-PIPELINE: Set Target Model to '{target_model}' ===", self.task_handle)
+                set_property("target_model", target_model)
+                
+                try:
+                    inference_engine.load_model()
+                    self.status_label.config(text="Pipeline completed successfully!")
+                    log("PIPELINE", "=== PIPELINE COMPLETED SUCCESSFULLY ===", self.task_handle)
+                except Exception as e:
+                    log("ApplyTab", f"[ERROR] Failed to reload model: {e}", self.task_handle)
+                    messagebox.showerror("Error", f"Failed to load model:\n{e}")
+            else:
+                self.status_label.config(text="Pipeline failed.")
+                log("ApplyTab", "[ERROR] Model training exited with error or failed.", self.task_handle)
+
         run_background(self, background_pipeline_task, on_pipeline_complete)
 
     def confirm_cancel(self):
-        """Requests graceful pipeline halt after the current step finishes."""
+        if not self.task_handle:
+            return
         response = messagebox.askyesno(
-            "Confirm Stop",
-            "This will let the current step finish and then safely stop the pipeline.\nDo you want to proceed?",
-            icon="warning"
+            "Confirm Cancellation",
+            "Terminate current step and end the pipeline?",
         )
-
         if response:
             self.status_label.config(text="Stopping after current step...")
-            self.text_box.insert(tk.END, "\n[User Action] Stop requested. Waiting for current step to complete...\n", "error_tag")
-            training_service.request_cancel()
+            log("ApplyTab", "[User Action] Stop requested. Waiting for cancellation...", self.task_handle)
+            self.task_handle.cancel()

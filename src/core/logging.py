@@ -14,8 +14,9 @@ def initialize_logging():
     sys.stdout = _LOG_FILE
     sys.stderr = _LOG_FILE
 
-def log(module="", msg=""):
+def log(module="", msg="", task_handle=None):
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    # logging is best sent to STDOUT, not written directly to files,
-    #  because the context of the caller should determine where process output goes. 
-    print(f"{timestamp} [{module}] {msg}")
+    formatted_msg = f"{timestamp} [{module}] {msg}"
+    print(formatted_msg)
+    if task_handle:
+        task_handle.write(f"{formatted_msg}\n")

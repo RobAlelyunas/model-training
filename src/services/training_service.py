@@ -2,12 +2,12 @@ import json
 from pathlib import Path
 import shutil
 import sys
-import subprocess
 
 from jinja2 import Template
 from src.core.global_state import get_property, register_state_change_handler
 from src.core.storage import get_datasets_dir, get_source_models_dir, get_templates_dir, get_generated_dir, get_target_models_dir
 from src.core.logging import log
+from src.services.run_command import TaskHandle, run_cmd
 
 
 class TrainingService:
@@ -18,29 +18,6 @@ class TrainingService:
     def global_state_changed(self):
         """Called when global state changes."""
         pass
-
-    def _run_cmd(self, cmd: str):
-        """Helper to run a shell command synchronously, streaming stdout live to sys.stdout."""
-        log("TrainingService", f"Running command: {cmd}")
-        
-        process = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            shell=True,
-            bufsize=1
-        )
-
-        # Stream line-by-line so it hits StdoutRedirector in real time
-        if process.stdout:
-            for line in process.stdout:
-                sys.stdout.write(line)
-
-        process.wait()
-        
-        if process.returncode != 0:
-            raise RuntimeError(f"Command failed with exit code {process.returncode}: {cmd}")
 
     def get_fused_model_path(self):
         return get_generated_dir() / f"{get_property('source_model')}-fused"
@@ -54,14 +31,14 @@ class TrainingService:
     def get_data_dir(self):
         return get_generated_dir() / "data"
     
-    def cleanup_generated_folder(self):
+    def cleanup_generated_folder(self, task_handle: TaskHandle | None = None):
         """Deletes the generated folder to ensure a clean slate for training."""
         generated_dir = get_generated_dir()
         if generated_dir.exists() and generated_dir.is_dir():
             shutil.rmtree(generated_dir)
-            log("TrainingService", f"Successfully deleted {generated_dir} and all its contents.")
+            log("TrainingService", f"Successfully deleted {generated_dir} and all its contents.", task_handle)
         else:
-            log("TrainingService", f"Directory {generated_dir} does not exist.")
+            log("TrainingService", f"Directory {generated_dir} does not exist.", task_handle)
         get_generated_dir().mkdir(parents=True, exist_ok=True)
 
     def _format_record(self, record: dict, chat_template = None) -> str:
@@ -82,15 +59,15 @@ class TrainingService:
                 add_generation_prompt=False
             )
 
-    def prepare_data_dir(self):
+    def prepare_data_dir(self, task_handle: TaskHandle | None = None):
 
         # 1. Clear and recreate the generated/data directory
         out_dir = self.get_data_dir()
         if out_dir.exists() and out_dir.is_dir():
             shutil.rmtree(out_dir)
-            log("TrainingService", f"Successfully deleted {out_dir} and all its contents.")
+            log("TrainingService", f"Successfully deleted {out_dir} and all its contents.", task_handle)
         else:
-            log("TrainingService", f"Directory {out_dir} does not exist.")
+            log("TrainingService", f"Directory {out_dir} does not exist.", task_handle)
         out_dir.mkdir(parents=True, exist_ok=True)
 
         # 2. Resolve the chat template
@@ -107,7 +84,7 @@ class TrainingService:
         in_file = get_datasets_dir() / get_property("dataset")
         if not in_file.exists():
             raise FileNotFoundError(f"Could not find input dataset at {in_file}") 
-        log("TrainingService", f"Processing dataset from {in_file}")
+        log("TrainingService", f"Processing dataset from {in_file}", task_handle)
 
         # 4. Stream line-by-line, convert, and write directly to the output file
         output_file_path = Path(f"{out_dir}/train.jsonl")
@@ -124,14 +101,14 @@ class TrainingService:
                 fout.write(json.dumps(out_record, ensure_ascii=False) + "\n")
                 processed_count += 1
 
-        log("TrainingService", f"Successfully processed {processed_count} records into {output_file_path}")
+        log("TrainingService", f"Successfully processed {processed_count} records into {output_file_path}", task_handle)
     
         # 5. Copy training file to validation dataset slot
         valid_file_path = self.get_data_dir() / "valid.jsonl"
         shutil.copy(output_file_path, valid_file_path)
-        log("TrainingService", f"Successfully copied {output_file_path} to {valid_file_path}")
+        log("TrainingService", f"Successfully copied {output_file_path} to {valid_file_path}", task_handle)
 
-    def train_lora(self):
+    def train_lora(self, task_handle: TaskHandle | None = None):
         batch_size = get_property("lora_batch_size")
         num_layers = get_property("lora_num_layers")
         iters = get_property("lora_iters")
@@ -140,21 +117,22 @@ class TrainingService:
         if not source_path.exists():
             raise FileNotFoundError(f"Source model not found at {source_path}. Please ensure it exists.")
         
-        cmd = (
-            "mlx_lm.lora "
-            f"--model {source_path} "
-            f"--data {self.get_data_dir()} "
-            "--train "
-            f"--batch-size {batch_size} "
-            f"--num-layers {num_layers} "
-            f"--iters {iters} "
-            f"--learning-rate {learning_rate} "
-            f"--grad-checkpoint "
-            f"--adapter-path {self.get_adapter_path()}"
-        )
-        self._run_cmd(cmd)
+        cmd_args = [
+            "mlx_lm",
+            "lora",
+            "--model", str(source_path),
+            "--data", str(self.get_data_dir()),
+            "--train",
+            "--batch-size", str(batch_size),
+            "--num-layers", str(num_layers),
+            "--iters", str(iters),
+            "--learning-rate", str(learning_rate),
+            "--grad-checkpoint",
+            "--adapter-path", str(self.get_adapter_path())
+        ]
+        run_cmd(cmd_args, task_handle)
 
-    def fuse_model(self):
+    def fuse_model(self, task_handle: TaskHandle | None = None):
         source_path = get_source_models_dir() / get_property("source_model")
         if not source_path.exists():
             raise FileNotFoundError(f"Source model not found at {source_path}. Please ensure it exists.")
@@ -162,53 +140,58 @@ class TrainingService:
         if not adapter_path.exists():
             raise FileNotFoundError(f"Adapter not found at {adapter_path}. Please ensure it exists.")
 
-        cmd = (
-            "mlx_lm.fuse "
-            f"--model {source_path} "
-            f"--save-path {self.get_fused_model_path()} "
-            f"--adapter-path {adapter_path}"
-        )
-        self._run_cmd(cmd)
+        # Explicity run via current Python executable: sys.executable -m mlx_lm.fuse
+        cmd_args = [
+            "mlx_lm",
+            "fuse",
+            "--model", str(source_path),
+            "--save-path", str(self.get_fused_model_path()),
+            "--adapter-path", str(adapter_path)
+        ]
+        run_cmd(cmd_args, task_handle)
 
-    def install_chat_template(self):
+    def install_chat_template(self, task_handle: TaskHandle | None = None):
         if not get_property("chat_template"):
-            log("TrainingService", "No chat template, skipping install")
+            log("TrainingService", "No chat template, skipping install", task_handle)
             return
         if get_property("chat_template") == "None":
-            log("TrainingService", "Chat template is None, skipping install")
+            log("TrainingService", "Chat template is None, skipping install", task_handle)
             return
         chat_template_path = get_templates_dir() / get_property("chat_template")
         if not chat_template_path.exists():
             raise FileNotFoundError(f"Chat template not found at {chat_template_path}. Please ensure it exists.")
         output_path = self.get_fused_model_path() / "chat_template.jinja"
         shutil.copy(chat_template_path, output_path)
-        log("TrainingService", f"Successfully generated template at: {output_path}")
+        log("TrainingService", f"Successfully generated template at: {output_path}", task_handle)
 
-    def quantize_fused_model(self):
+    def quantize_fused_model(self, task_handle: TaskHandle | None = None):
         q_bits = get_property("quantization_bits")
         perform_quantization = get_property("perform_quantization")
 
         if not perform_quantization:
-            cmd = "echo '[INFO] Quantization skipped.'"
-        else:
-            cmd = (
-                "mlx_lm.convert "
-                f"--model {self.get_fused_model_path()} "
-                f"-q "
-                f"--q-bits {q_bits} "
-                f"--mlx-path {self.get_quantized_model_path()}"
-            )
-        self._run_cmd(cmd)
+            log("TrainingService", "[INFO] Quantization skipped.", task_handle)
+            return
 
-    def deploy_target_model(self):
+        # Explicity run via current Python executable: sys.executable -m mlx_lm.convert
+        cmd_args = [
+            "mlx_lm",
+            "convert",
+            "--model", str(self.get_fused_model_path()),
+            "-q",
+            "--q-bits", str(q_bits),
+            "--mlx-path", str(self.get_quantized_model_path())
+        ]
+        run_cmd(cmd_args, task_handle)
+
+    def deploy_target_model(self, task_handle: TaskHandle | None = None):
         target_model = get_property("target_model")
         target_path = Path(get_target_models_dir() / target_model)
 
         if self.get_quantized_model_path().exists():
-            log("TrainingService", f"[INFO] Deploying quantized fused model from {self.get_quantized_model_path()} to {target_path}.")
+            log("TrainingService", f"[INFO] Deploying quantized fused model from {self.get_quantized_model_path()} to {target_path}.", task_handle)
             source_to_copy = self.get_quantized_model_path()
         elif self.get_fused_model_path().exists():
-            log("TrainingService", f"[INFO] Deploying unquantized fused model from {self.get_fused_model_path()} to {target_path}.")
+            log("TrainingService", f"[INFO] Deploying unquantized fused model from {self.get_fused_model_path()} to {target_path}.", task_handle)
             source_to_copy = self.get_fused_model_path()
         else:
             raise FileNotFoundError(f"[ERROR] Neither quantized nor fused model found for source '{get_property('source_model')}' in generated/")
@@ -217,17 +200,37 @@ class TrainingService:
             shutil.rmtree(target_path)
 
         shutil.copytree(source_to_copy, target_path)
-        log("TrainingService", f"[INFO] Successfully deployed model to {target_path}.")
+        log("TrainingService", f"[INFO] Successfully deployed model to {target_path}.", task_handle)
 
-    def request_cancel(self):
-        """Signals the pipeline to stop after the current step completes."""
-        self._cancel_requested = True
-        log("TrainingService", "Stop requested by user. Will halt after current step.")
+    def download_source_model(self, repo_id: str, task_handle: TaskHandle | None = None):
+        """
+        Downloads a model repository from Hugging Face directly into 
+        the source models directory using the huggingface-cli via run_cmd.
+        
+        :param repo_id: Hugging Face repository identifier (e.g., 'mlx-community/Llama-3.2-1B-Instruct-4bit')
+        """
+        # Extract folder name (e.g. "Llama-3.2-1B-Instruct-4bit" from "mlx-community/Llama-3.2-1B-Instruct-4bit")
+        model_folder_name = repo_id.split("/")[-1]
+        model_path = get_source_models_dir() / model_folder_name
 
-    def apply_pipeline(self):
+        log("TrainingService", f"Starting download for Hugging Face model '{repo_id}' into {model_path}", task_handle)
+
+        cmd_args = [
+            "src.services.downloader",
+            repo_id,
+            str(model_path)
+        ]
+
+        run_cmd(cmd_args, task_handle)
+
+        if task_handle and task_handle.is_cancelled():
+            log("TrainingService", f"Download of model '{repo_id}' was cancelled.", task_handle)
+        else:
+            log("TrainingService", f"Successfully downloaded model '{repo_id}' to {model_path}", task_handle)
+
+    def apply_pipeline(self, task_handle: TaskHandle | None = None):
         """Runs all steps sequentially as standard blocking calls."""
-        self._cancel_requested = False
-
+        
         steps = [
             ("Cleanup Generated Folder", self.cleanup_generated_folder),
             ("Prepare Data Directory", self.prepare_data_dir),
@@ -239,18 +242,18 @@ class TrainingService:
         ]
 
         for step_name, step_func in steps:
-            if self._cancel_requested:
-                log("PIPELINE", f"Stopping queue. Skipping remaining step: {step_name}")
+            if task_handle and task_handle.is_cancelled():
+                log("PIPELINE", f"Pipeline cancelled before starting step: {step_name}", task_handle)
                 break
 
-            log("PIPELINE", f"Starting step: {step_name}")
+            log("PIPELINE", f"Starting step: {step_name}", task_handle)
             # Each step blocks completely until finished
-            step_func()
-            log("PIPELINE", f"Successfully completed step: {step_name}")
+            step_func(task_handle)
+            log("PIPELINE", f"Successfully completed step: {step_name}", task_handle)
 
-        if self._cancel_requested:
-            log("PIPELINE", "Pipeline successfully stopped after current step.")
+        if task_handle and task_handle.is_cancelled():
+            log("PIPELINE", "Pipeline successfully cancelled.", task_handle)
         else:
-            log("PIPELINE", "All pipeline steps completed successfully!")
+            log("PIPELINE", "All pipeline steps completed successfully!", task_handle)
 
 training_service = TrainingService()
