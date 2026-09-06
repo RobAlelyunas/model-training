@@ -5,7 +5,7 @@ from pathlib import Path
 from src.core.logging import log
 
 class HelpDialog(tk.Toplevel):
-    def __init__(self, parent, title="Dialog", width=750, height=630, images_dir=None):
+    def __init__(self, parent, title="Dialog", width=750, height=520, images_dir=None):
         super().__init__(parent)
         
         # Modal window setup
@@ -20,19 +20,27 @@ class HelpDialog(tk.Toplevel):
         self.update_idletasks()
         p_x = parent.winfo_rootx() + (parent.winfo_width() // 2) - (width // 2)
         p_y = parent.winfo_rooty() + (parent.winfo_height() // 2) - (height // 2)
-        self.geometry(f"+{max(0, p_x)}+{max(0, p_y - 20)}")
+        self.geometry(f"+{max(0, p_x)}+{max(0, p_y)}")
 
         # Keep references to prevent garbage collection of images
         self.image_refs = []
         self.images_dir = images_dir or Path(__name__).parent / "assets"
 
-        # Main layout container with padding
+       # Main layout container with padding
         main_frame = ttk.Frame(self, padding=15)
         main_frame.pack(expand=True, fill="both")
 
-        # Scrollable text area container
+        # 1. PACK BOTTOM BAR FIRST (reserves fixed height at bottom)
+        self.bottom_bar = ttk.Frame(main_frame)
+        self.bottom_bar.pack(side="bottom", fill="x")
+
+        # Default Close Button (Right side)
+        close_btn = ttk.Button(self.bottom_bar, text="Close", command=self.close_dialog, width=12)
+        close_btn.pack(side="right")
+
+        # 2. PACK CANVAS FRAME SECOND (expands to take all remaining space above bottom_bar)
         canvas_frame = ttk.Frame(main_frame)
-        canvas_frame.pack(expand=True, fill="both", pady=(0, 15))
+        canvas_frame.pack(side="top", expand=True, fill="both", pady=(0, 15))
 
         self.text_widget = tk.Text(
             canvas_frame, 
@@ -55,14 +63,6 @@ class HelpDialog(tk.Toplevel):
         self.text_widget.tag_configure("h2", font=("Helvetica", 13, "bold"), spacing1=10, spacing2=4)
         self.text_widget.tag_configure("body", font=("Helvetica", 11), spacing1=4, spacing2=4)
         self.text_widget.tag_configure("center", justify="center")
-
-        # Bottom control bar container (Children can add widgets via self.bottom_bar)
-        self.bottom_bar = ttk.Frame(main_frame)
-        self.bottom_bar.pack(fill="x", side="bottom")
-
-        # Default Close Button (Right side)
-        close_btn = ttk.Button(self.bottom_bar, text="Close", command=self.close_dialog, width=12)
-        close_btn.pack(side="right")
         
         self.protocol("WM_DELETE_WINDOW", self.close_dialog)
 

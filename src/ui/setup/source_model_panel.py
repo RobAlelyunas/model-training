@@ -74,10 +74,7 @@ class SourceModelPanel(ttk.LabelFrame):
                 self.on_source_changed_callback(val)
 
     def on_download_starter_model(self):
-        repo_id = get_property("starter_model")
-        if not repo_id:
-            messagebox.showwarning("Missing Property", "No starter_model property configured.", parent=self)
-            return
+        repo_id = get_property("starter_model_5G")
 
         model_name = repo_id.rsplit("/", 1)[-1] if "/" in repo_id else repo_id
         model_path = get_source_models_dir() / model_name

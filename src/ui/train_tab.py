@@ -24,22 +24,26 @@ class TrainTab(ttk.Frame):
         self.current_prompt = ""
         self.current_response = ""
         self.create_widgets()
-        register_state_change_handler(self.global_state_changed)
 
+        register_state_change_handler(self.global_state_changed)
+        
     def global_state_changed(self):
         """Reloads cached global properties when state changes."""
+        new_target_model = get_property("target_model")
+        model_changed = (new_target_model != self.target_model)
+
         self.working_dataset_path = Path(get_datasets_dir() / get_property("dataset"))
-        self.target_model = get_property("target_model")
+        self.target_model = new_target_model
         self.target_model_path = get_target_models_dir() / self.target_model
 
-        # Sync checkbox state if global property changes externally
+        # 1. Sync checkbox value WITHOUT destroying the widget
         if hasattr(self, "use_chat_var"):
             current_chat_prop = bool(get_property("use_chat_template"))
             if self.use_chat_var.get() != current_chat_prop:
                 self.use_chat_var.set(current_chat_prop)
 
-        # Refresh the chat template widget visibility based on model capability
-        if hasattr(self, "refresh_chat_template_widget"):
+        # 2. ONLY re-render the container if the underlying model actually changed
+        if model_changed and hasattr(self, "refresh_chat_template_widget"):
             self.refresh_chat_template_widget()
 
     def create_widgets(self):
