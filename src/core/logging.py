@@ -19,4 +19,4 @@ def log(module="", msg="", task_handle=None):
     formatted_msg = f"{timestamp} [{module}] {msg}"
     print(formatted_msg)
     if task_handle:
-        task_handle.write(f"{formatted_msg}\n")
+        task_handle.write(f"{formatted_msg}\n", tag=module)

@@ -15,18 +15,18 @@ class TaskHandle:
         return self._cancelled
     def set_widget(self, widget):
         self.widget = widget
-    def _write(self, text):
+    def _write(self, text, tag=None):
         if self.widget and hasattr(self.widget, "winfo_exists") and self.widget.winfo_exists():
             try:
                 #self.widget.configure(state="normal")
-                self.widget.insert("end", text)
+                self.widget.insert("end", text, tag)
                 self.widget.see("end")
                 #self.widget.configure(state="disabled")
             except Exception:
                 pass  # Handle any race conditions gracefully if destroyed mid-write
-    def write(self, text):
+    def write(self, text, tag=None):
         if self.widget:
-            self.widget.after(0, lambda t=text: self._write(t))
+            self.widget.after(0, lambda t=text, tg=tag: self._write(t, tg))
 
 _active_processes = set()
 
@@ -65,9 +65,9 @@ def run_cmd(cmd_args: list[str], task_handle: TaskHandle | None = None):
     is_pyinstllaer_bundle = getattr(sys, "frozen", False)
     
     if is_pyinstllaer_bundle:
-        full_cmd = [sys.executable, "--worker"] + cmd_args
+        full_cmd = [sys.executable] + cmd_args
     else:
-        full_cmd = [sys.executable, "-m", "src.main", "--worker"] + cmd_args
+        full_cmd = [sys.executable, "-m", "src.main"] + cmd_args
 
     log("RunCommand", f"Running command: {' '.join(full_cmd)}", task_handle)
 

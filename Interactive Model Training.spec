@@ -3,8 +3,9 @@
 import os
 import sys
 from glob import glob
-from PyInstaller.utils.hooks import collect_all
+from PyInstaller.utils.hooks import collect_all, collect_data_files
 
+huggingface_hub_datas = collect_data_files('huggingface_hub')
 mlx_datas, mlx_binaries, mlx_hiddenimports = collect_all('mlx')
 mlx_lm_datas, mlx_lm_binaries, mlx_lm_hiddenimports = collect_all('mlx_lm')
 
@@ -17,7 +18,7 @@ a = Analysis(
     ['src/main.py'],
     pathex=[],
     binaries=mlx_binaries + mlx_lm_binaries + extra_binaries,
-    datas=mlx_datas + mlx_lm_datas + [('assets', 'assets')],
+    datas=mlx_datas + mlx_lm_datas + [('assets', 'assets')] + huggingface_hub_datas,
     hiddenimports=mlx_hiddenimports + mlx_lm_hiddenimports + ['src.services.downloader'],
     hookspath=[],
     hooksconfig={},

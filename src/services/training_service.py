@@ -248,7 +248,11 @@ class TrainingService:
 
             log("PIPELINE", f"Starting step: {step_name}", task_handle)
             # Each step blocks completely until finished
-            step_func(task_handle)
+            try:
+                step_func(task_handle)
+            except Exception as e:
+                log("ERROR", f"Error occurred while executing step: {step_name}. Error: {e}", task_handle)
+                raise
             log("PIPELINE", f"Successfully completed step: {step_name}", task_handle)
 
         if task_handle and task_handle.is_cancelled():

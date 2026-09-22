@@ -165,10 +165,11 @@ class ApplyTab(ttk.Frame):
         self.text_box.configure(yscrollcommand=scrollbar.set)
 
         # Map theme colors to distinct text box tags
-        self.text_box.tag_config("stdout_tag", foreground=LOG_FG_DEFAULT)
-        self.text_box.tag_config("pipeline_tag", foreground=LOG_FG_PIPELINE, font=("Courier", 10, "bold"))
-        self.text_box.tag_config("controller_tag", foreground=LOG_FG_CONTROLLER)
-        self.text_box.tag_config("error_tag", foreground=LOG_FG_ERROR, font=("Courier", 10, "bold"))
+        self.text_box.tag_config("stdout", foreground=LOG_FG_DEFAULT)
+        self.text_box.tag_config("PIPELINE", foreground=LOG_FG_PIPELINE, font=("Courier", 10, "bold"))
+        self.text_box.tag_config("ApplyTab", foreground=LOG_FG_CONTROLLER)
+        self.text_box.tag_config("RunCommand", foreground=LOG_FG_CONTROLLER)
+        self.text_box.tag_config("ERROR", foreground=LOG_FG_ERROR, font=("Courier", 10, "bold"))
 
     @requires("source_model", "target_model", "dataset")
     def auto_set_parameters(self):
@@ -233,6 +234,10 @@ class ApplyTab(ttk.Frame):
         # Clear text display for new run
         self.text_box.delete("1.0", tk.END)
 
+        # Disable Run, Enable Stop
+        self.start_button.config(state=tk.DISABLED)
+        self.cancel_button.config(state=tk.NORMAL)
+
         # Log initial configuration
         dataset_path = get_property("dataset")
         source_model_path = get_property("source_model")
@@ -249,13 +254,18 @@ class ApplyTab(ttk.Frame):
             self.task_handle
         )
 
-        self.start_button.config(state=tk.DISABLED)
-        self.cancel_button.config(state=tk.NORMAL)
-
         # Pre-pipeline step
         self.status_label.config(text="Preparing: Unloading inference model to save memory...")
         log("PIPELINE", "=== PRE-PIPELINE: UNLOADING INFERENCE MODEL TO SAVE MEMORY ===", self.task_handle)
-        inference_engine.unload_model()
+        
+        try:
+            inference_engine.unload_model()
+        except Exception as e:
+            log("ERROR", f"Failed to unload inference model: {e}", self.task_handle)
+            self.status_label.config(text="Pipeline failed during preparation.")
+            self.reset_button_states()
+            messagebox.showerror("Error", f"Failed to unload model:\n{e}", parent=self)
+            return
 
         # Start pipeline step
         self.status_label.config(text="Running training pipeline...")
@@ -266,14 +276,14 @@ class ApplyTab(ttk.Frame):
         def background_pipeline_task():
             try:
                 training_service.apply_pipeline(self.task_handle)
+                return True
             except Exception as e:
                 pipeline_succeeded[0] = False
-                raise e
-            return True
+                return False
 
         def on_pipeline_complete(success):
-            self.start_button.config(state=tk.NORMAL)
-            self.cancel_button.config(state=tk.DISABLED)
+            # Always reset buttons back to normal
+            self.reset_button_states()
 
             # Check explicit cancellation status first
             if self.task_handle and self.task_handle.is_cancelled():
@@ -298,14 +308,18 @@ class ApplyTab(ttk.Frame):
                     self.status_label.config(text="Pipeline completed successfully!")
                     log("PIPELINE", "=== PIPELINE COMPLETED SUCCESSFULLY ===", self.task_handle)
                 except Exception as e:
-                    log("ApplyTab", f"[ERROR] Failed to reload model: {e}", self.task_handle)
-                    messagebox.showerror("Error", f"Failed to load model:\n{e}")
+                    log("ERROR", f"Failed to reload model: {e}", self.task_handle)
+                    messagebox.showerror("Error", f"Failed to load model:\n{e}", parent=self)
             else:
                 self.status_label.config(text="Pipeline failed.")
-                log("ApplyTab", "[ERROR] Model training exited with error or failed.", self.task_handle)
+                log("PIPELINE", "=== PIPELINE FAILED OR EXITED WITH ERRORS ===", self.task_handle)
 
         run_background(self, background_pipeline_task, on_pipeline_complete)
 
+    def reset_button_states(self):
+        """Restores default button availability once background work terminates or fails."""
+        self.start_button.config(state=tk.NORMAL)
+        self.cancel_button.config(state=tk.DISABLED)
     def confirm_cancel(self):
         if not self.task_handle:
             return
