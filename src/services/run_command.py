@@ -1,3 +1,4 @@
+import atexit
 import subprocess
 import sys
 import threading
@@ -27,6 +28,17 @@ class TaskHandle:
         if self.widget:
             self.widget.after(0, lambda t=text: self._write(t))
 
+_active_processes = set()
+
+def cleanup_orphan_processes():  
+    for process in list(_active_processes):
+        if process.poll() is None: # still running
+            log("RunCommand", f"Cleaning up orphan process {process} on app exit...")
+            _terminate(process)
+    _active_processes.clear()
+
+atexit.register(cleanup_orphan_processes)
+
 def _terminate(process: subprocess.Popen, task_handle: TaskHandle | None = None):
     """Sends SIGTERM, waits 1s for natural exit, and kills if still alive."""
     if process.poll() is not None:
@@ -49,8 +61,14 @@ def _terminate(process: subprocess.Popen, task_handle: TaskHandle | None = None)
 
 
 def run_cmd(cmd_args: list[str], task_handle: TaskHandle | None = None):
-    """Blocking method that runs an external UNIX command, streaming stdout live via a reader thread."""
-    full_cmd = [sys.executable, "-m"] + cmd_args
+    """Runs a python module in an external UNIX process, making it killable with SIGTERM"""
+    is_pyinstllaer_bundle = getattr(sys, "frozen", False)
+    
+    if is_pyinstllaer_bundle:
+        full_cmd = [sys.executable, "--worker"] + cmd_args
+    else:
+        full_cmd = [sys.executable, "-m", "src.main", "--worker"] + cmd_args
+
     log("RunCommand", f"Running command: {' '.join(full_cmd)}", task_handle)
 
     process = subprocess.Popen(
@@ -61,6 +79,8 @@ def run_cmd(cmd_args: list[str], task_handle: TaskHandle | None = None):
         shell=False,
         bufsize=0
     )
+
+    _active_processes.add(process)
 
     def stdout_reader():
         try:
@@ -95,6 +115,8 @@ def run_cmd(cmd_args: list[str], task_handle: TaskHandle | None = None):
             pass
 
     reader_thread.join()
+
+    _active_processes.discard(process)
 
     if process.returncode != 0 and not (task_handle and task_handle.is_cancelled()):
         raise RuntimeError(f"Command failed with exit code {process.returncode}: {' '.join(full_cmd)}")

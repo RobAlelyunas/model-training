@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import ttk
 from src.core.global_state import get_property
 from src.core.storage import get_references_dir
 from src.ui.apply_tab import ApplyTab
